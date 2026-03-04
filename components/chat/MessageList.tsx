@@ -6,22 +6,23 @@ import { ChatMessage } from "./ChatMessage";
 
 interface MessageListProps {
   messages: UIMessage[];
-  isLoading: boolean;
+  isWaiting: boolean;
+  error: Error | undefined;
 }
 
-export function MessageList({ messages, isLoading }: MessageListProps) {
+export function MessageList({ messages, isWaiting, error }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
+  }, [messages, isWaiting, error]);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
       {messages.map((message) => (
         <ChatMessage key={message.id} message={message} />
       ))}
-      {isLoading && (
+      {isWaiting && (
         <div className="flex justify-start">
           <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-2xl px-4 py-3">
             <div className="flex items-center gap-2 text-zinc-400">
@@ -32,6 +33,15 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
               </div>
               <span className="text-sm">Thinking...</span>
             </div>
+          </div>
+        </div>
+      )}
+      {error && (
+        <div className="flex justify-start">
+          <div className="bg-red-950/50 border border-red-800/50 rounded-2xl px-4 py-3 max-w-[85%]">
+            <p className="text-sm text-red-400">
+              Something went wrong. Please try again.
+            </p>
           </div>
         </div>
       )}

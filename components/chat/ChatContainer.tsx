@@ -49,11 +49,12 @@ export function ChatContainer() {
     })
   );
 
-  const { messages, status, stop, sendMessage } = useChat({
+  const { messages, status, error, stop, sendMessage } = useChat({
     transport: transportRef.current,
   });
 
   const isLoading = status === "submitted" || status === "streaming";
+  const isWaiting = status === "submitted";
   const hasMessages = messages.length > 0;
 
   const handleSuggestionClick = (suggestion: string) => {
@@ -69,7 +70,7 @@ export function ChatContainer() {
   return (
     <div className="flex flex-col h-full">
       {hasMessages ? (
-        <MessageList messages={messages} isLoading={isLoading} />
+        <MessageList messages={messages} isWaiting={isWaiting} error={error} />
       ) : (
         <WelcomeScreen
           isConnected={portfolio.isConnected}

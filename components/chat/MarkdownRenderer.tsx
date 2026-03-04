@@ -48,9 +48,10 @@ const components: Components = {
       {children}
     </ol>
   ),
-  code: ({ children, className, ...props }) => {
-    const isInline = !className;
-    if (isInline) {
+  code: ({ children, className, node, ...props }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const isBlock = className || (node as any)?.parent?.tagName === "pre";
+    if (!isBlock) {
       return (
         <code
           className="bg-zinc-800 px-1.5 py-0.5 rounded text-sm text-emerald-400 font-mono"
