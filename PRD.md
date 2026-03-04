@@ -1,7 +1,7 @@
 # KasAgent — Product Requirements Document
 
 > **AI DeFi Copilot for Kasplex L2**
-> Version 1.0 · March 2026
+> Version 1.1 · March 2026
 
 ---
 
@@ -20,8 +20,9 @@
 11. [Risks & Mitigations](#11-risks--mitigations)
 12. [Dependencies & Assumptions](#12-dependencies--assumptions)
 13. [Out of Scope (Phase 1)](#13-out-of-scope-phase-1)
-14. [Key Implementation Decisions](#14-key-implementation-decisions)
-15. [Open Questions](#15-open-questions)
+14. [UI/UX Design System](#14-uiux-design-system)
+15. [Key Implementation Decisions](#15-key-implementation-decisions)
+16. [Open Questions](#16-open-questions)
 
 ---
 
@@ -109,10 +110,16 @@ The core product: a chat-based AI assistant connected to the user's wallet on Ka
 - Wallet connection (MetaMask / WalletConnect)
 - Portfolio analysis and visualization
 - AI-powered chat interface for natural language DeFi interaction
+- Structured data cards for tool results (swap quotes, pool reserves, farms, staking rates)
 - Token swaps via ZealousSwap
 - DeFi opportunity discovery (pools, farms, staking)
 - Transaction explanation before signing
 - Transaction building and wallet submission
+
+**UI Enhancements (within Phase 1):**
+- Portfolio sidebar with persistent wallet overview (Bloomberg Light)
+- Enhanced header with network status and KAS balance
+- Contextual quick action buttons after AI responses
 
 **Initial Protocol Integration:** ZealousSwap (Router, Factory, Farms/MasterChef, InfinityPools)
 
@@ -190,12 +197,12 @@ Extend the agent to additional Kaspa L2 ecosystems and beyond.
 
 ### F3: AI Chat Interface
 
-**Description:** A conversational interface where users interact with their DeFi positions using natural language.
+**Description:** A conversational interface where users interact with their DeFi positions using natural language. The chat renders AI responses as a mix of text bubbles and structured data cards, creating a data-forward experience where tool results (swap quotes, pool data, farm listings, staking rates) are visualized inline rather than hidden or flattened into plain text.
 
 | Aspect | Detail |
 |---|---|
 | **Input** | Free-text natural language input |
-| **Output** | Structured responses with formatted data (tables, token amounts, APY figures) |
+| **Output** | Mixed-content responses: markdown text interleaved with structured data cards rendered from tool results |
 | **Conversation history** | Persisted per session, scrollable, with clear message attribution (user vs. AI) |
 | **Context awareness** | AI has access to connected wallet data, available protocols, and current conversation context |
 | **Example prompts** | "What can I do with my tokens?", "Find the best yield", "Swap 200 USDC to KAS", "Explain this transaction" |
@@ -206,12 +213,52 @@ Extend the agent to additional Kaspa L2 ecosystems and beyond.
 - **Explanatory** — Transaction breakdowns, risk assessments, fee explanations
 - **Confirmation** — Post-execution transaction receipts with explorer links
 
+#### Structured Data Cards
+
+The AI uses tool-calling to query on-chain data (swap quotes, pool reserves, farm info, staking rates). Instead of discarding these tool results or rendering them as raw text, the chat renders each tool result as a purpose-built visual card inline within the conversation flow.
+
+An AI response like *"Here's the quote: [tool result] As you can see..."* renders as: **text bubble → swap card → text bubble** — natural conversation with structured data interspersed.
+
+**Card Types:**
+
+| Card | Renders For | Visual Design |
+|---|---|---|
+| **SwapQuoteCard** | `getSwapQuote` | Two token badges with amounts, directional arrow between them, price ratio footer. Teal/cyan accent for amounts. |
+| **PoolReservesCard** | `getPoolReserves` | Pair name header, reserve amounts for each token, total LP supply. |
+| **FarmsTableCard** | `getActiveFarms` | "Active Farms" header, table with Pool ID, Alloc %, Total Deposited, reward info. |
+| **InfinityPoolRatesCard** | `getInfinityPoolRates` | Three mini-cards in a row (ZEAL, NACHO, KASPER) showing exchange rate and total staked. |
+| **ToolCardSkeleton** | Any tool (loading) | Animated pulsing skeleton with contextual label (e.g., "Fetching swap quote..."). |
+| **ToolErrorCard** | Any tool (error) | Red-tinted card with error message. |
+
+**Card States:** Each card has three states:
+1. **Loading** — Tool call is in progress; displays animated skeleton with a humanized label
+2. **Success** — Tool returned data; renders the appropriate typed card
+3. **Error** — Tool returned an error payload (`{ error: "..." }`); renders error card
+
+**Card Dispatch:** A `ToolPartRenderer` component inspects each tool invocation part, checks its state (loading/error/done), and routes to the correct card component. Unknown or future tools fall back to a formatted JSON display rather than being silently dropped.
+
+**Card Styling:**
+- Cards use `bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4` — visually distinct from text bubbles
+- Data values use `font-mono text-teal-400` for emphasis
+- Token badges are color-coded: emerald (KAS), blue (ZEAL), orange (NACHO), purple (KASPER)
+- Token symbols reference the curated token list from `config/tokens.ts`
+
+**Message Rendering:** `ChatMessage` iterates through `message.parts` in order:
+- `type === "text"` → renders via MarkdownRenderer (in its own bubble)
+- Tool invocation parts → renders via `ToolPartRenderer` (as inline card)
+- User messages are unchanged (text-only bubble)
+- Empty text parts are skipped
+
 **Acceptance Criteria:**
 - AI responds within 5 seconds for informational queries
 - AI correctly interprets swap commands with token names and amounts
 - AI provides actionable suggestions with one-click execution
 - Conversation history persists within a session
 - AI gracefully handles ambiguous or unsupported requests
+- Tool results render as visual cards inline in the conversation, not as raw text or hidden data
+- Cards display loading skeletons while tool calls are in progress
+- Tool errors surface via a dedicated error card, not silently swallowed
+- Unknown tools render a JSON fallback rather than being discarded
 
 ---
 
@@ -341,6 +388,92 @@ The ZealousSwap adapter must support:
 
 ---
 
+### F8: UI Layout & Experience Enhancements
+
+**Description:** A set of UI improvements that transform the single-column chat into a data-forward application layout. These enhancements build on the structured card system (F3) and portfolio dashboard (F2) to provide persistent context, network awareness, and guided interaction. Implemented incrementally across three sub-phases.
+
+#### F8.1: Portfolio Sidebar (Bloomberg Light)
+
+A persistent sidebar that displays the user's on-chain portfolio alongside the chat, eliminating the need to switch between a dashboard view and the conversation.
+
+| Aspect | Detail |
+|---|---|
+| **Width** | Fixed `w-72` when open, `w-0` when collapsed with `transition-all duration-300` |
+| **Toggle** | Persistent icon button on the sidebar edge; default open on desktop |
+| **Sections** | Token Balances, LP Positions, Farm Positions, Staking Positions |
+| **Data source** | Receives portfolio data as props from page-level hooks (`usePortfolio`, `useInfinityPoolData`) |
+| **Empty state** | "Connect Wallet" prompt when no wallet is connected |
+
+**Layout restructure:** Portfolio data hooks are lifted from `ChatContainer` to `page.tsx` so that both the sidebar and the chat can consume the same data. The page layout becomes:
+
+```
+┌─────────────────────────────────────────────────┐
+│                   AppHeader                      │
+├──────────┬──────────────────────────────────────┤
+│ Portfolio│                                       │
+│ Sidebar  │          Chat Area                    │
+│ (w-72)   │      (flex-1, max-w-3xl msgs)        │
+│          │                                       │
+└──────────┴──────────────────────────────────────┘
+```
+
+Chat messages are constrained to `max-w-3xl mx-auto` within the expanded chat area so text remains readable when the sidebar is open.
+
+**Acceptance Criteria:**
+- Sidebar shows all token balances, LP, farm, and staking positions
+- Sidebar collapses and expands smoothly with animation
+- Chat remains fully functional with sidebar open or closed
+- Portfolio data stays in sync — sidebar and chat share the same data source
+
+---
+
+#### F8.2: Enhanced Header
+
+A redesigned application header that surfaces network status and key wallet info at a glance.
+
+| Aspect | Detail |
+|---|---|
+| **Layout** | `[Sidebar Toggle] [KasAgent Logo] ... [NetworkStatus] [KAS Balance Pill] [ConnectButton]` |
+| **Network status** | Green pulsing dot + "Kasplex L2" when connected to chain 202555; orange dot + "Wrong Network" on mismatch; gray dot + "Disconnected" when no wallet |
+| **KAS balance** | Prominent pill showing `XX.XXXX KAS` from portfolio data |
+| **Data** | Uses `useAccount()` and `useChainId()` from wagmi; accepts portfolio data as props |
+
+**Acceptance Criteria:**
+- Network status accurately reflects wallet connection and chain state
+- KAS balance updates when portfolio data refreshes
+- Sidebar toggle button controls the portfolio sidebar
+- Header is visually consistent with the overall dark theme
+
+---
+
+#### F8.3: Quick Action Buttons
+
+Contextual follow-up suggestions that appear after AI responses containing tool results, guiding users toward logical next steps.
+
+| Aspect | Detail |
+|---|---|
+| **Trigger** | Displayed after the last AI message when it contains tool results and the AI is not loading |
+| **Actions** | Derived from tool name + output (e.g., `getSwapQuote` → "Check staking rates for [tokenOut]") |
+| **Format** | Horizontal row of pill buttons styled like suggestion chips |
+| **Behavior** | Clicking a button sends the corresponding message to the AI as if the user typed it |
+
+**Action Mapping:**
+
+| Tool Result | Suggested Actions |
+|---|---|
+| `getSwapQuote` | "Check staking rates for [tokenOut]", "Find better rate" |
+| `getPoolReserves` | "Check farms for this pair" |
+| `getActiveFarms` | "Compare with staking" |
+| `getInfinityPoolRates` | "Best yield opportunity" |
+
+**Acceptance Criteria:**
+- Quick action buttons appear only after AI messages with tool results
+- Buttons disappear when the AI is processing a new request
+- Clicking a button sends the correct message and triggers an AI response
+- Actions are contextually relevant to the preceding tool result
+
+---
+
 ## 7. User Flows
 
 ### Flow 1: First-Time User
@@ -349,32 +482,37 @@ The ZealousSwap adapter must support:
 1. User visits KasAgent web app
 2. Landing page explains the product with a "Connect Wallet" CTA
 3. User clicks "Connect Wallet" → MetaMask popup → selects account → confirms
-4. If wrong network: prompted to add/switch to Kasplex L2 (Chain ID 202555)
-5. Portfolio dashboard loads: token balances, positions, distribution chart
+4. If wrong network: header shows orange "Wrong Network" indicator → prompted to switch to Kasplex L2
+5. Portfolio sidebar loads: token balances, LP/farm/staking positions
+   Header shows green "Kasplex L2" status + KAS balance pill
 6. Chat opens with welcome message:
    "Welcome! I can see your portfolio. Ask me anything —
     try 'What can I do with my tokens?' or 'Find the best yield.'"
 7. User types: "What can I do with my 1200 USDC?"
-8. AI responds with strategies: swap to KAS, provide liquidity, stake
-9. User selects: "Swap 500 USDC to KAS"
-10. AI shows transaction explanation (amounts, fees, risks)
+8. AI responds with text + inline data cards (pool reserves, farm rates, staking rates)
+   Quick action buttons appear: "Swap USDC to KAS", "Find best yield", "Provide liquidity"
+9. User clicks quick action or types: "Swap 500 USDC to KAS"
+10. AI calls getSwapQuote → SwapQuoteCard renders inline (amounts, price ratio)
+    AI explains fees, risks, slippage in text below the card
 11. User clicks "Confirm"
 12. MetaMask prompts for approval (if needed) → then swap transaction
 13. User signs → tx submitted → AI shows confirmation with explorer link
+    Sidebar portfolio updates to reflect new balances
 ```
 
 ### Flow 2: Returning User — Yield Discovery
 
 ```
 1. User opens KasAgent → wallet auto-reconnects
-2. Portfolio loads with updated balances
+2. Sidebar loads with updated balances; header shows KAS balance
 3. User types: "Where can I earn the best yield on my KAS?"
-4. AI scans ZealousSwap farms and InfinityPools
-5. AI responds with ranked options:
-   - InfinityPool ZEAL: ~12% APY (single-sided staking)
-   - KAS/USDC Farm: ~18% APY (requires LP position)
-   - InfinityPool KASPER: ~8% APY (single-sided staking)
-6. User: "Stake some KAS in the ZEAL pool"
+4. AI calls getActiveFarms and getInfinityPoolRates
+5. AI responds with:
+   - FarmsTableCard: table of active farms with Pool ID, Alloc %, Deposited
+   - InfinityPoolRatesCard: 3 mini-cards (ZEAL, NACHO, KASPER) with exchange rates
+   - Text summary ranking opportunities by estimated APY
+   Quick action buttons: "Stake in ZEAL pool", "Compare farms", "Best yield opportunity"
+6. User clicks "Stake in ZEAL pool" or types: "Stake some KAS in the ZEAL pool"
 7. AI proposes plan: wrap KAS → swap half to ZEAL → stake in InfinityPool
 8. AI explains each step with fees and expected outcome
 9. User confirms → sequential transactions execute
@@ -459,9 +597,35 @@ The ZealousSwap adapter must support:
 |---|---|
 | **Framework** | React / Next.js |
 | **Wallet integration** | wagmi + viem (industry standard for EVM wallet connection) |
-| **Chat UI** | Custom chat component with markdown rendering, code blocks, and action buttons |
-| **State management** | React context + wagmi hooks for wallet state |
-| **Styling** | Tailwind CSS |
+| **Chat UI** | Custom chat component with markdown rendering, inline data cards for tool results, and action buttons |
+| **State management** | React context + wagmi hooks for wallet state; portfolio hooks lifted to page level for shared access |
+| **Styling** | Tailwind CSS with dark theme (zinc-800/900 base, teal-400 data accents) |
+
+**Component Architecture:**
+
+```
+app/page.tsx (layout orchestrator, owns portfolio hooks)
+├── components/header/AppHeader.tsx (logo, network status, KAS balance, sidebar toggle)
+│   └── components/header/NetworkStatus.tsx (chain connection indicator)
+├── components/sidebar/PortfolioSidebar.tsx (collapsible portfolio panel)
+└── components/chat/ChatContainer.tsx (chat logic, AI transport, message handling)
+    └── components/chat/MessageList.tsx (scrollable messages, max-w-3xl constraint)
+        ├── components/chat/ChatMessage.tsx (iterates message.parts → text or tool card)
+        │   ├── MarkdownRenderer (text parts)
+        │   └── components/chat/ToolPartRenderer.tsx (tool part dispatcher)
+        │       ├── components/chat/cards/SwapQuoteCard.tsx
+        │       ├── components/chat/cards/PoolReservesCard.tsx
+        │       ├── components/chat/cards/FarmsTableCard.tsx
+        │       ├── components/chat/cards/InfinityPoolRatesCard.tsx
+        │       ├── components/chat/cards/ToolCardSkeleton.tsx
+        │       └── components/chat/cards/ToolErrorCard.tsx
+        └── components/chat/QuickActions.tsx (contextual follow-up buttons)
+```
+
+**Shared Utilities:**
+- `lib/ai/tool-types.ts` — TypeScript interfaces matching tool return shapes (`SwapQuoteResult`, `PoolReservesResult`, `ActiveFarmsResult`, `InfinityPoolRatesResult`)
+- `lib/token-utils.ts` — Shared `getTokenSymbol(address)` function (deduplicated from portfolio and serializer code)
+- `lib/ai/quick-actions.ts` — Maps tool name + output to suggested follow-up actions
 
 ### AI Layer
 
@@ -663,7 +827,45 @@ The following are explicitly **not** included in the Phase 1 MVP:
 
 ---
 
-## 14. Key Implementation Decisions
+## 14. UI/UX Design System
+
+### Design Philosophy
+
+KasAgent follows a **"Structured Conversation + Bloomberg Light"** design approach. The interface combines a conversational AI chat with data-dense financial UI elements, ensuring that users always have context about their portfolio and on-chain data without leaving the conversation flow.
+
+### Design Principles
+
+1. **Data-forward, not data-hidden** — Tool results (swap quotes, pool data, farm listings) are rendered as visual cards inline in the conversation, never discarded or flattened into plain text.
+2. **Persistent context** — Portfolio data is always accessible via the sidebar, eliminating the need to ask the AI for information that should be visible at a glance.
+3. **Progressive disclosure** — The chat starts simple (text input/output) but reveals structured data and quick actions as the conversation deepens.
+4. **Guided exploration** — Quick action buttons surface logical next steps after each AI response, lowering the barrier for users who don't know what to ask next.
+
+### Visual Language
+
+| Element | Style |
+|---|---|
+| **Base theme** | Dark (zinc-800/900 backgrounds) |
+| **Data accent** | Teal/cyan (`text-teal-400`) for numeric values and key data |
+| **Card containers** | `bg-zinc-800/80 border border-zinc-700/50 rounded-xl` — distinct from text bubbles |
+| **Typography** | Sans-serif for prose, monospace (`font-mono`) for data values |
+| **Token colors** | Emerald (KAS), Blue (ZEAL), Orange (NACHO), Purple (KASPER) |
+| **Status indicators** | Green (connected), Orange (wrong network), Gray (disconnected) |
+| **Message width** | `max-w-3xl mx-auto` within the chat area for readability |
+
+### Implementation Phases
+
+The UI redesign is implemented incrementally, with each phase independently deployable:
+
+| Phase | Scope | Status |
+|---|---|---|
+| **Phase 1: Structured Cards** | Tool result cards inline in chat (F3 enhancement) | Implemented |
+| **Phase 2: Portfolio Sidebar** | Persistent sidebar with wallet overview (F8.1) | Planned |
+| **Phase 3: Enhanced Header** | Network status, KAS balance pill (F8.2) | Planned |
+| **Phase 4: Quick Actions** | Contextual follow-up buttons (F8.3) | Planned |
+
+---
+
+## 15. Key Implementation Decisions
 
 This section defines important implementation choices for the MVP in order to reduce ambiguity during development.
 
@@ -788,7 +990,7 @@ Wallet addresses will **not** be stored in analytics logs in order to protect us
 
 ---
 
-## 15. Open Questions
+## 16. Open Questions
 
 | # | Question | Proposed Direction | Owner |
 |---|---|---|---|
