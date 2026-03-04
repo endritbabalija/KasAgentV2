@@ -5,12 +5,14 @@ import { SwapExecutionCard } from "./cards/SwapExecutionCard";
 import { PoolReservesCard } from "./cards/PoolReservesCard";
 import { FarmsTableCard } from "./cards/FarmsTableCard";
 import { InfinityPoolRatesCard } from "./cards/InfinityPoolRatesCard";
+import { YieldOpportunitiesCard } from "./cards/YieldOpportunitiesCard";
 import type {
   SwapQuoteResult,
   PrepareSwapResult,
   PoolReservesResult,
   ActiveFarmsResult,
   InfinityPoolRatesResult,
+  YieldOpportunitiesResult,
 } from "@/lib/ai/tool-types";
 
 interface ToolPart {
@@ -56,6 +58,8 @@ export function ToolPartRenderer({ part }: { part: ToolPart }) {
       return <FarmsTableCard data={output as unknown as ActiveFarmsResult} />;
     case "getInfinityPoolRates":
       return <InfinityPoolRatesCard data={output as unknown as InfinityPoolRatesResult} />;
+    case "discoverYieldOpportunities":
+      return <YieldOpportunitiesCard data={output as unknown as YieldOpportunitiesResult} />;
     default:
       // Fallback: render raw JSON for unknown tools
       return (

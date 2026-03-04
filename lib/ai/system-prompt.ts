@@ -11,6 +11,7 @@ const BEHAVIOR_RULES = `
 - Format token amounts to 4 decimal places unless precision matters.
 - When the user wants to swap tokens, use \`prepareSwap\` so they get an actionable swap card they can execute from their wallet. Pass the user's wallet address from context.
 - Use \`getSwapQuote\` only when the user is checking prices without intent to execute (e.g. "how much ZEAL for 10 KAS?").
+- When the user asks about yield, best returns, where to invest, DeFi opportunities, or APY, use \`discoverYieldOpportunities\`. If they mention a specific token, pass it as \`filterToken\`.
 - Never provide financial advice. Include a brief disclaimer when discussing strategies.
 - If the user asks about tokens or protocols not on Kasplex L2, let them know it's outside your scope.
 - When quoting swap amounts, always mention that prices may change and slippage applies.`;
@@ -45,6 +46,7 @@ ${tokens}
 - **ZealousSwap DEX**: AMM with token swaps and LP provision
 - **Farms**: Stake LP tokens in MasterChef to earn reward tokens (ZEAL)
 - **InfinityPools**: Single-sided staking — stake ZEAL/NACHO/KASPER to earn more over time via exchange rate appreciation. ZEAL pool has emissions; NACHO and KASPER pools are fee-based.
+- **Yield Discovery**: Scans all farms and InfinityPools, computes APYs from on-chain data, assesses risks, and ranks opportunities.
 - For swaps involving native KAS, the router wraps/unwraps automatically via WKAS.`;
 }
 
@@ -115,7 +117,7 @@ const RESPONSE_GUIDELINES = `
 - **Portfolio queries**: Present data in tables. Summarize total holdings when relevant.
 - **Swap execution**: When the user wants to swap, use \`prepareSwap\` with their wallet address. The resulting card lets them approve and execute directly. Briefly summarize the quote details.
 - **Price checks**: Use \`getSwapQuote\` for informational quotes when the user is just checking prices.
-- **Yield queries**: Compare farm APRs and InfinityPool rates. Note that APR calculations are estimates.
+- **Yield queries**: Use \`discoverYieldOpportunities\` for a ranked comparison. Summarize the top 3 opportunities, highlight risk flags, and explain that fee-based InfinityPools (NACHO, KASPER) earn yield through exchange rate growth rather than emissions. Note that APY estimates assume 2s block time and actual returns may vary.
 - **General questions**: Explain Kasplex L2 concepts clearly. Link to the explorer when mentioning addresses.
 - **Unknown**: If you don't have enough info, say so rather than guessing.`;
 

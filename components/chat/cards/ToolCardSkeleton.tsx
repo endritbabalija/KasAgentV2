@@ -5,6 +5,7 @@ export function ToolCardSkeleton({ toolName }: { toolName: string }) {
     getPoolReserves: "Fetching pool reserves...",
     getActiveFarms: "Fetching active farms...",
     getInfinityPoolRates: "Fetching staking rates...",
+    discoverYieldOpportunities: "Scanning DeFi opportunities...",
   };
 
   return (

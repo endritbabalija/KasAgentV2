@@ -73,3 +73,55 @@ export interface PrepareSwapResult {
   tx: PrepareSwapTx;
   error?: string;
 }
+
+// --- Yield Discovery types ---
+
+export type OpportunityType = "farm" | "infinity_pool";
+export type RiskLevel = "low" | "medium" | "high";
+
+export interface RiskFlag {
+  type: string;
+  label: string;
+  severity: RiskLevel;
+}
+
+export interface FarmOpportunityDetails {
+  pid: number;
+  lpToken: string;
+  allocPercent: number;
+  rewardToken: string;
+  rewardPerBlock: string;
+  totalDeposited: string;
+  pair: string;
+  reserveA: string;
+  reserveB: string;
+}
+
+export interface InfinityPoolOpportunityDetails {
+  token: string;
+  exchangeRate: string;
+  totalStaked: string;
+  zealPerBlock?: string;
+  emissionsPaused?: boolean;
+}
+
+export interface YieldOpportunity {
+  id: string;
+  type: OpportunityType;
+  name: string;
+  tokens: string[];
+  apyPercent: number | null;
+  yieldSource: string;
+  tvlKas: number;
+  risks: RiskFlag[];
+  overallRisk: RiskLevel;
+  details: FarmOpportunityDetails | InfinityPoolOpportunityDetails;
+}
+
+export interface YieldOpportunitiesResult {
+  opportunities: YieldOpportunity[];
+  tokenPricesInKas: Record<string, number>;
+  blockTimeSeconds: number;
+  fetchedAt: string;
+  error?: string;
+}
