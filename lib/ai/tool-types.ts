@@ -58,6 +58,12 @@ export interface PrepareSwapTx {
   value: string;
 }
 
+export interface ContractInfo {
+  address: string;
+  functionName: string;
+  description: string;
+}
+
 export interface PrepareSwapResult {
   tokenIn: string;
   tokenOut: string;
@@ -67,6 +73,10 @@ export interface PrepareSwapResult {
   slippage: number;
   priceImpact: string;
   dexFee: string;
+  gasEstimate: string;
+  dexFeeAmount: string;
+  riskFlags: RiskFlag[];
+  contractInfo: ContractInfo;
   swapType: "KAS_TO_TOKEN" | "TOKEN_TO_KAS" | "TOKEN_TO_TOKEN";
   needsApproval: boolean;
   currentAllowance: string;

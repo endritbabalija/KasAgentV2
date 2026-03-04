@@ -115,7 +115,7 @@ function buildWalletContext(
 const RESPONSE_GUIDELINES = `
 ## Response Guidelines
 - **Portfolio queries**: Present data in tables. Summarize total holdings when relevant.
-- **Swap execution**: When the user wants to swap, use \`prepareSwap\` with their wallet address. The resulting card lets them approve and execute directly. Briefly summarize the quote details.
+- **Swap execution**: When the user wants to swap, use \`prepareSwap\` with their wallet address. The resulting card lets them approve and execute directly. Before the user confirms, provide a brief plain-language summary: what tokens are being swapped, the expected output, any risks or warnings, and remind them to review the details in the card before confirming.
 - **Price checks**: Use \`getSwapQuote\` for informational quotes when the user is just checking prices.
 - **Yield queries**: Use \`discoverYieldOpportunities\` for a ranked comparison. Summarize the top 3 opportunities, highlight risk flags, and explain that fee-based InfinityPools (NACHO, KASPER) earn yield through exchange rate growth rather than emissions. Note that APY estimates assume 2s block time and actual returns may vary.
 - **General questions**: Explain Kasplex L2 concepts clearly. Link to the explorer when mentioning addresses.

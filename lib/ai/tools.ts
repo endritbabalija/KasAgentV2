@@ -1,4 +1,4 @@
-import { createPublicClient, http, formatUnits, parseUnits } from "viem";
+import { createPublicClient, http, formatUnits, parseUnits, formatEther } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
 import { kasplexL2 } from "@/config/chains";
@@ -18,6 +18,7 @@ import type {
   YieldOpportunity,
   RiskFlag,
   RiskLevel,
+  ContractInfo,
 } from "./tool-types";
 
 const client = createPublicClient({
@@ -484,6 +485,72 @@ export const aiTools = {
           rawAmountOut
         );
 
+        // Gas estimation
+        let gasEstimate = "0.0214"; // fallback
+        try {
+          const gasPrice = await client.getGasPrice();
+          const gasUnits = 150000n; // conservative estimate for swap tx
+          const gasCostWei = gasUnits * gasPrice;
+          gasEstimate = formatEther(gasCostWei);
+        } catch {
+          // keep fallback
+        }
+
+        // DEX fee in token amount
+        const parsedAmountIn = parseFloat(amountIn);
+        const feeAmount = isNaN(parsedAmountIn) ? 0 : parsedAmountIn * 0.003;
+        const dexFeeAmount = `${feeAmount.toFixed(feeAmount >= 1 ? 4 : 8)} ${tokenIn.toUpperCase()}`;
+
+        // Risk flags
+        const riskFlags: RiskFlag[] = [];
+        const impactNum = parseFloat(priceImpact);
+        if (impactNum > 3) {
+          riskFlags.push({ type: "high_price_impact", label: `High price impact (${priceImpact}%)`, severity: "high" });
+        } else if (impactNum > 1) {
+          riskFlags.push({ type: "moderate_price_impact", label: `Moderate price impact (${priceImpact}%)`, severity: "medium" });
+        }
+
+        // Check pool liquidity
+        try {
+          const pairAddress = (await client.readContract({
+            address: CONTRACTS.FACTORY,
+            abi: factoryAbi,
+            functionName: "getPair",
+            args: [addressIn, addressOut],
+          })) as `0x${string}`;
+
+          if (pairAddress !== "0x0000000000000000000000000000000000000000") {
+            const [reserves, token0] = await Promise.all([
+              client.readContract({ address: pairAddress, abi: pairAbi, functionName: "getReserves" }),
+              client.readContract({ address: pairAddress, abi: pairAbi, functionName: "token0" }),
+            ]);
+            const [r0, r1] = reserves as [bigint, bigint, number];
+            const isToken0In = (token0 as string).toLowerCase() === addressIn.toLowerCase();
+            const reserveIn = Number(formatUnits(isToken0In ? r0 : r1, decimalsIn));
+            const reserveOut = Number(formatUnits(isToken0In ? r1 : r0, decimalsOut));
+            if (reserveIn < 1000 || reserveOut < 1000) {
+              riskFlags.push({ type: "low_liquidity", label: "Low pool liquidity", severity: "high" });
+            }
+          }
+        } catch {
+          // skip liquidity check on error
+        }
+
+        if (slippage > 1) {
+          riskFlags.push({ type: "high_slippage", label: `High slippage tolerance (${slippage}%)`, severity: "medium" });
+        }
+
+        // Contract interaction info
+        const contractInfoMap: Record<string, { functionName: string; description: string }> = {
+          KAS_TO_TOKEN: { functionName: "swapExactKASForTokens", description: "Swap exact KAS for tokens via ZealousSwap Router" },
+          TOKEN_TO_KAS: { functionName: "swapTokensForExactKAS", description: "Swap tokens for KAS via ZealousSwap Router" },
+          TOKEN_TO_TOKEN: { functionName: "swapExactTokensForTokens", description: "Swap tokens for tokens via ZealousSwap Router" },
+        };
+        const contractInfo: ContractInfo = {
+          address: CONTRACTS.ROUTER,
+          ...contractInfoMap[swapType],
+        };
+
         return {
           tokenIn,
           tokenOut,
@@ -493,6 +560,10 @@ export const aiTools = {
           slippage,
           priceImpact,
           dexFee: "0.3",
+          gasEstimate,
+          dexFeeAmount,
+          riskFlags,
+          contractInfo,
           swapType,
           needsApproval,
           currentAllowance,
