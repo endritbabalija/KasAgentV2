@@ -1,64 +1,215 @@
-import Image from "next/image";
+"use client";
+
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useReadContract } from "wagmi";
+import { usePortfolio } from "@/hooks/usePortfolio";
+import { useInfinityPoolData } from "@/hooks/useInfinityPoolData";
+import { formatTokenAmount, shortenAddress } from "@/lib/format";
+import { KASPLEX_TOKENS } from "@/config/tokens";
+import { CONTRACTS } from "@/config/contracts";
+import { factoryAbi, masterchefAbi } from "@/config/abis";
+
+function getTokenSymbol(address: string): string {
+  const token = KASPLEX_TOKENS.find(
+    (t) => t.address?.toLowerCase() === address.toLowerCase()
+  );
+  return token?.symbol ?? shortenAddress(address);
+}
 
 export default function Home() {
+  const portfolio = usePortfolio();
+  const { pools: infinityPools } = useInfinityPoolData();
+
+  // Lightweight discovery reads — just the counts, no cascading detail fetches
+  const { data: pairCountRaw } = useReadContract({
+    address: CONTRACTS.FACTORY,
+    abi: factoryAbi,
+    functionName: "allPairsLength",
+  });
+  const pairCount = pairCountRaw !== undefined ? Number(pairCountRaw) : 0;
+
+  const { data: activePoolsRaw } = useReadContract({
+    address: CONTRACTS.MASTER_CHEF,
+    abi: masterchefAbi,
+    functionName: "getActivePools",
+  });
+  const farmPoolIds = (activePoolsRaw as bigint[]) ?? [];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+        <h1 className="text-xl font-bold tracking-tight">KasAgent</h1>
+        <ConnectButton />
+      </header>
+
+      <main className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+        {!portfolio.isConnected ? (
+          <div className="text-center py-20">
+            <h2 className="text-3xl font-bold mb-3">Welcome to KasAgent</h2>
+            <p className="text-zinc-400 mb-6">
+              AI-powered DeFi copilot for Kasplex L2
+            </p>
+            <p className="text-zinc-500 text-sm">
+              Connect your wallet to view your portfolio
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Token Balances */}
+            <section>
+              <h2 className="text-lg font-semibold mb-3">Token Balances</h2>
+              <div className="bg-zinc-900 rounded-xl border border-zinc-800 divide-y divide-zinc-800">
+                {portfolio.balances.map((tb) => (
+                  <div
+                    key={tb.symbol}
+                    className="flex items-center justify-between px-4 py-3"
+                  >
+                    <span className="font-medium">{tb.symbol}</span>
+                    <span className="text-zinc-300 font-mono text-sm">
+                      {formatTokenAmount(tb.balance, tb.decimals)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* LP Positions */}
+            {portfolio.lpPositions.length > 0 && (
+              <section>
+                <h2 className="text-lg font-semibold mb-3">LP Positions</h2>
+                <div className="space-y-3">
+                  {portfolio.lpPositions.map((lp) => (
+                    <div
+                      key={lp.pairAddress}
+                      className="bg-zinc-900 rounded-xl border border-zinc-800 p-4"
+                    >
+                      <div className="flex justify-between mb-2">
+                        <span className="font-medium">
+                          {getTokenSymbol(lp.token0)} /{" "}
+                          {getTokenSymbol(lp.token1)}
+                        </span>
+                        <span className="text-zinc-400 text-sm font-mono">
+                          LP: {formatTokenAmount(lp.lpBalance, 18)}
+                        </span>
+                      </div>
+                      <div className="text-sm text-zinc-400 flex gap-4">
+                        <span>
+                          {getTokenSymbol(lp.token0)}:{" "}
+                          {formatTokenAmount(lp.token0Amount, 18)}
+                        </span>
+                        <span>
+                          {getTokenSymbol(lp.token1)}:{" "}
+                          {formatTokenAmount(lp.token1Amount, 18)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Farm Positions */}
+            {portfolio.farmPositions.length > 0 && (
+              <section>
+                <h2 className="text-lg font-semibold mb-3">Farm Positions</h2>
+                <div className="space-y-3">
+                  {portfolio.farmPositions.map((fp) => (
+                    <div
+                      key={fp.pid}
+                      className="bg-zinc-900 rounded-xl border border-zinc-800 p-4"
+                    >
+                      <div className="flex justify-between mb-1">
+                        <span className="font-medium">Pool #{fp.pid}</span>
+                        <span className="text-sm text-zinc-400">
+                          {fp.canWithdraw ? "Unlocked" : "Locked"}
+                        </span>
+                      </div>
+                      <div className="text-sm text-zinc-400 flex gap-4">
+                        <span>
+                          Staked: {formatTokenAmount(fp.stakedAmount, 18)}
+                        </span>
+                        <span>
+                          Pending: {formatTokenAmount(fp.pendingReward, 18)}{" "}
+                          {getTokenSymbol(portfolio.farmGlobals.rewardToken)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Staking Positions */}
+            {portfolio.stakingPositions.some((s) => s.xTokenBalance > 0n) && (
+              <section>
+                <h2 className="text-lg font-semibold mb-3">
+                  Staking Positions
+                </h2>
+                <div className="space-y-3">
+                  {portfolio.stakingPositions
+                    .filter((sp) => sp.xTokenBalance > 0n)
+                    .map((sp) => (
+                      <div
+                        key={sp.poolName}
+                        className="bg-zinc-900 rounded-xl border border-zinc-800 p-4"
+                      >
+                        <div className="flex justify-between mb-1">
+                          <span className="font-medium">
+                            x{sp.poolName} Pool
+                          </span>
+                          <span className="text-sm text-zinc-400 font-mono">
+                            x{sp.poolName}:{" "}
+                            {formatTokenAmount(sp.xTokenBalance, 18)}
+                          </span>
+                        </div>
+                        <div className="text-sm text-zinc-400">
+                          Underlying:{" "}
+                          {formatTokenAmount(sp.underlyingAmount, 18)}{" "}
+                          {sp.poolName} (rate:{" "}
+                          {formatTokenAmount(sp.exchangeRate, 18, 6)})
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+
+        {/* Discovery - always visible */}
+        <section>
+          <h2 className="text-lg font-semibold mb-3">Discovery</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+              <p className="text-zinc-400 text-sm mb-1">DEX Pairs</p>
+              <p className="text-2xl font-bold">{pairCount}</p>
+            </div>
+            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+              <p className="text-zinc-400 text-sm mb-1">Active Farms</p>
+              <p className="text-2xl font-bold">{farmPoolIds.length}</p>
+            </div>
+            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+              <p className="text-zinc-400 text-sm mb-1">InfinityPool Rates</p>
+              {infinityPools.length > 0 ? (
+                <div className="space-y-1 mt-1">
+                  {infinityPools.map((pool) => (
+                    <div
+                      key={pool.name}
+                      className="flex justify-between text-sm"
+                    >
+                      <span className="text-zinc-300">{pool.name}</span>
+                      <span className="font-mono text-zinc-400">
+                        {formatTokenAmount(pool.exchangeRate, 18, 6)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-zinc-500 text-sm">Loading...</p>
+              )}
+            </div>
+          </div>
+        </section>
       </main>
     </div>
   );
