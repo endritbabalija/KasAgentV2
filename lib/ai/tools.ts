@@ -587,6 +587,798 @@ export const aiTools = {
     },
   }),
 
+  prepareAddLiquidity: tool({
+    description:
+      "Prepare an add-liquidity transaction for a ZealousSwap pair. Calculates optimal amounts, checks allowances, and returns tx params. Supported tokens: KAS, WKAS, ZEAL, NACHO, KASPER.",
+    inputSchema: z.object({
+      tokenA: z.string().describe("Symbol of the first token (e.g. KAS, ZEAL)"),
+      tokenB: z.string().describe("Symbol of the second token (e.g. NACHO, KASPER)"),
+      amountA: z.string().describe("Amount of tokenA in human-readable form"),
+      amountB: z.string().optional().describe("Amount of tokenB (optional — calculated from reserves ratio if omitted)"),
+      slippage: z.number().optional().default(0.5).describe("Slippage tolerance in percent (default 0.5)"),
+      walletAddress: z.string().optional().describe("User wallet address for allowance check"),
+    }),
+    execute: async ({ tokenA, tokenB, amountA, amountB, slippage, walletAddress }) => {
+      const addressA = resolveTokenAddress(tokenA);
+      const addressB = resolveTokenAddress(tokenB);
+      if (!addressA || !addressB) {
+        return { error: `Unknown token: ${!addressA ? tokenA : tokenB}. Supported: KAS, WKAS, ZEAL, NACHO, KASPER` };
+      }
+      if (addressA === addressB) {
+        return { error: "Tokens must be different" };
+      }
+
+      const decimalsA = getTokenDecimals(tokenA);
+      const decimalsB = getTokenDecimals(tokenB);
+      const isNativeA = tokenA.toUpperCase() === "KAS";
+      const isNativeB = tokenB.toUpperCase() === "KAS";
+      const liquidityType: "KAS_TOKEN" | "TOKEN_TOKEN" = isNativeA || isNativeB ? "KAS_TOKEN" : "TOKEN_TOKEN";
+
+      try {
+        // Get pair and reserves
+        const pairAddress = (await client.readContract({
+          address: CONTRACTS.FACTORY,
+          abi: factoryAbi,
+          functionName: "getPair",
+          args: [addressA, addressB],
+        })) as `0x${string}`;
+
+        const isNewPair = pairAddress === "0x0000000000000000000000000000000000000000";
+        const rawAmountA = parseUnits(amountA, decimalsA);
+        let rawAmountB: bigint;
+        let computedAmountB: string;
+        let estimatedLpTokens = "0";
+        let poolShare = "0";
+
+        if (isNewPair) {
+          // New pair: both amounts required
+          if (!amountB) {
+            return { error: "Both token amounts are required when creating a new pair" };
+          }
+          rawAmountB = parseUnits(amountB, decimalsB);
+          computedAmountB = amountB;
+          estimatedLpTokens = "first deposit";
+          poolShare = "100";
+        } else {
+          // Existing pair: calculate optimal B from reserves
+          const [reserves, token0, totalSupply] = await Promise.all([
+            client.readContract({ address: pairAddress, abi: pairAbi, functionName: "getReserves" }),
+            client.readContract({ address: pairAddress, abi: pairAbi, functionName: "token0" }),
+            client.readContract({ address: pairAddress, abi: pairAbi, functionName: "totalSupply" }),
+          ]);
+
+          const [r0, r1] = reserves as [bigint, bigint, number];
+          const isToken0A = (token0 as string).toLowerCase() === addressA.toLowerCase();
+          const reserveA = isToken0A ? r0 : r1;
+          const reserveB = isToken0A ? r1 : r0;
+          const lpTotalSupply = totalSupply as bigint;
+
+          if (amountB) {
+            rawAmountB = parseUnits(amountB, decimalsB);
+            computedAmountB = amountB;
+          } else {
+            // Calculate optimal amountB: amountA * reserveB / reserveA
+            rawAmountB = reserveA > 0n ? (rawAmountA * reserveB) / reserveA : 0n;
+            computedAmountB = formatUnits(rawAmountB, decimalsB);
+          }
+
+          // Estimate LP tokens: min(amountA * totalSupply / reserveA, amountB * totalSupply / reserveB)
+          if (lpTotalSupply > 0n && reserveA > 0n && reserveB > 0n) {
+            const lpFromA = (rawAmountA * lpTotalSupply) / reserveA;
+            const lpFromB = (rawAmountB * lpTotalSupply) / reserveB;
+            const lpTokens = lpFromA < lpFromB ? lpFromA : lpFromB;
+            estimatedLpTokens = formatUnits(lpTokens, 18);
+            const newTotal = lpTotalSupply + lpTokens;
+            poolShare = newTotal > 0n ? ((Number(lpTokens) / Number(newTotal)) * 100).toFixed(2) : "0";
+          }
+        }
+
+        const slippageBps = BigInt(Math.round(slippage * 100));
+        const rawAmountAMin = rawAmountA - (rawAmountA * slippageBps) / 10000n;
+        const rawAmountBMin = rawAmountB - (rawAmountB * slippageBps) / 10000n;
+        const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
+
+        // Check allowances
+        let needsApprovalA = false;
+        let needsApprovalB = false;
+        let currentAllowanceA = "0";
+        let currentAllowanceB = "0";
+
+        if (walletAddress) {
+          if (!isNativeA) {
+            const tokenAddr = KASPLEX_TOKENS.find(t => t.symbol.toUpperCase() === tokenA.toUpperCase())?.address;
+            if (tokenAddr) {
+              const allowance = (await client.readContract({
+                address: tokenAddr,
+                abi: erc20Abi,
+                functionName: "allowance",
+                args: [walletAddress as `0x${string}`, CONTRACTS.ROUTER],
+              })) as bigint;
+              currentAllowanceA = allowance.toString();
+              needsApprovalA = allowance < rawAmountA;
+            }
+          }
+          if (!isNativeB) {
+            const tokenAddr = KASPLEX_TOKENS.find(t => t.symbol.toUpperCase() === tokenB.toUpperCase())?.address;
+            if (tokenAddr) {
+              const allowance = (await client.readContract({
+                address: tokenAddr,
+                abi: erc20Abi,
+                functionName: "allowance",
+                args: [walletAddress as `0x${string}`, CONTRACTS.ROUTER],
+              })) as bigint;
+              currentAllowanceB = allowance.toString();
+              needsApprovalB = allowance < rawAmountB;
+            }
+          }
+        }
+
+        // Gas estimate
+        let gasEstimate = "0.03";
+        try {
+          const gasPrice = await client.getGasPrice();
+          gasEstimate = formatEther(200000n * gasPrice);
+        } catch { /* keep fallback */ }
+
+        // Risk flags
+        const riskFlags: RiskFlag[] = [
+          { type: "impermanent_loss", label: "Impermanent loss risk applies to all LP positions", severity: "medium" as RiskLevel },
+        ];
+        if (isNewPair) {
+          riskFlags.push({ type: "new_pair", label: "Creating a new liquidity pair", severity: "medium" as RiskLevel });
+        }
+        if (!isNewPair) {
+          // Check for unbalanced deposit
+          try {
+            const pairReserves = (await client.readContract({ address: pairAddress, abi: pairAbi, functionName: "getReserves" })) as [bigint, bigint, number];
+            const token0 = (await client.readContract({ address: pairAddress, abi: pairAbi, functionName: "token0" })) as string;
+            const isT0A = token0.toLowerCase() === addressA.toLowerCase();
+            const rA = isT0A ? pairReserves[0] : pairReserves[1];
+            const rB = isT0A ? pairReserves[1] : pairReserves[0];
+            if (rA > 0n && rB > 0n) {
+              const optimalB = (rawAmountA * rB) / rA;
+              const diff = rawAmountB > optimalB ? rawAmountB - optimalB : optimalB - rawAmountB;
+              const pctDiff = Number((diff * 10000n) / optimalB) / 100;
+              if (pctDiff > 5) {
+                riskFlags.push({ type: "unbalanced_deposit", label: `Deposit is ${pctDiff.toFixed(1)}% off optimal ratio`, severity: "medium" as RiskLevel });
+              }
+            }
+            const resIn = Number(formatUnits(isT0A ? pairReserves[0] : pairReserves[1], decimalsA));
+            const resOut = Number(formatUnits(isT0A ? pairReserves[1] : pairReserves[0], decimalsB));
+            if (resIn < 1000 || resOut < 1000) {
+              riskFlags.push({ type: "low_liquidity", label: "Low pool liquidity", severity: "high" as RiskLevel });
+            }
+          } catch { /* skip */ }
+        }
+
+        const fnName = liquidityType === "KAS_TOKEN" ? "addLiquidityKAS" : "addLiquidity";
+        const contractInfo: ContractInfo = {
+          address: CONTRACTS.ROUTER,
+          functionName: fnName,
+          description: `Add liquidity to ${tokenA}/${tokenB} pool via ZealousSwap Router`,
+        };
+
+        // For KAS_TOKEN, native side goes as value
+        let txValue = "0";
+        if (isNativeA) txValue = rawAmountA.toString();
+        else if (isNativeB) txValue = rawAmountB.toString();
+
+        return {
+          tokenA,
+          tokenB,
+          amountA,
+          amountB: computedAmountB,
+          amountAMin: formatUnits(rawAmountAMin, decimalsA),
+          amountBMin: formatUnits(rawAmountBMin, decimalsB),
+          slippage,
+          estimatedLpTokens,
+          poolShare,
+          liquidityType,
+          needsApprovalA,
+          needsApprovalB,
+          currentAllowanceA,
+          currentAllowanceB,
+          gasEstimate,
+          riskFlags,
+          contractInfo,
+          tx: {
+            router: CONTRACTS.ROUTER,
+            tokenAAddress: addressA,
+            tokenBAddress: addressB,
+            rawAmountADesired: rawAmountA.toString(),
+            rawAmountBDesired: rawAmountB.toString(),
+            rawAmountAMin: rawAmountAMin.toString(),
+            rawAmountBMin: rawAmountBMin.toString(),
+            deadline: deadline.toString(),
+            value: txValue,
+          },
+        };
+      } catch (e) {
+        return { error: `Failed to prepare add liquidity: ${e instanceof Error ? e.message : "Unknown error"}` };
+      }
+    },
+  }),
+
+  prepareRemoveLiquidity: tool({
+    description:
+      "Prepare a remove-liquidity transaction for a ZealousSwap pair. Calculates expected token outputs. Supported tokens: KAS, WKAS, ZEAL, NACHO, KASPER.",
+    inputSchema: z.object({
+      tokenA: z.string().describe("Symbol of the first token"),
+      tokenB: z.string().describe("Symbol of the second token"),
+      percentage: z.number().optional().default(100).describe("Percentage of LP to remove (1-100, default 100)"),
+      slippage: z.number().optional().default(0.5).describe("Slippage tolerance in percent (default 0.5)"),
+      walletAddress: z.string().optional().describe("User wallet address"),
+    }),
+    execute: async ({ tokenA, tokenB, percentage, slippage, walletAddress }) => {
+      const addressA = resolveTokenAddress(tokenA);
+      const addressB = resolveTokenAddress(tokenB);
+      if (!addressA || !addressB) {
+        return { error: `Unknown token: ${!addressA ? tokenA : tokenB}. Supported: KAS, WKAS, ZEAL, NACHO, KASPER` };
+      }
+
+      const decimalsA = getTokenDecimals(tokenA);
+      const decimalsB = getTokenDecimals(tokenB);
+      const isNativeA = tokenA.toUpperCase() === "KAS";
+      const isNativeB = tokenB.toUpperCase() === "KAS";
+      const liquidityType: "KAS_TOKEN" | "TOKEN_TOKEN" = isNativeA || isNativeB ? "KAS_TOKEN" : "TOKEN_TOKEN";
+
+      try {
+        const pairAddress = (await client.readContract({
+          address: CONTRACTS.FACTORY,
+          abi: factoryAbi,
+          functionName: "getPair",
+          args: [addressA, addressB],
+        })) as `0x${string}`;
+
+        if (pairAddress === "0x0000000000000000000000000000000000000000") {
+          return { error: `No pair exists for ${tokenA}/${tokenB}` };
+        }
+
+        if (!walletAddress) {
+          return { error: "Wallet address is required for remove liquidity" };
+        }
+
+        const [userLpBalance, reserves, token0, totalSupply] = await Promise.all([
+          client.readContract({ address: pairAddress, abi: pairAbi, functionName: "balanceOf", args: [walletAddress as `0x${string}`] }),
+          client.readContract({ address: pairAddress, abi: pairAbi, functionName: "getReserves" }),
+          client.readContract({ address: pairAddress, abi: pairAbi, functionName: "token0" }),
+          client.readContract({ address: pairAddress, abi: pairAbi, functionName: "totalSupply" }),
+        ]);
+
+        const lpBalance = userLpBalance as bigint;
+        if (lpBalance === 0n) {
+          return { error: `You have no LP tokens for ${tokenA}/${tokenB}` };
+        }
+
+        const clampedPct = Math.min(100, Math.max(1, percentage));
+        const lpToRemove = (lpBalance * BigInt(clampedPct)) / 100n;
+
+        const [r0, r1] = reserves as [bigint, bigint, number];
+        const lpTotal = totalSupply as bigint;
+        const isToken0A = (token0 as string).toLowerCase() === addressA.toLowerCase();
+        const reserveA = isToken0A ? r0 : r1;
+        const reserveB = isToken0A ? r1 : r0;
+
+        // Expected amounts: lpToRemove * reserve / totalSupply
+        const expectedA = (lpToRemove * reserveA) / lpTotal;
+        const expectedB = (lpToRemove * reserveB) / lpTotal;
+
+        const slippageBps = BigInt(Math.round(slippage * 100));
+        const rawAmountAMin = expectedA - (expectedA * slippageBps) / 10000n;
+        const rawAmountBMin = expectedB - (expectedB * slippageBps) / 10000n;
+        const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
+
+        // Check LP token allowance to router
+        let needsApproval = false;
+        let currentAllowance = "0";
+        const lpAllowance = (await client.readContract({
+          address: pairAddress,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [walletAddress as `0x${string}`, CONTRACTS.ROUTER],
+        })) as bigint;
+        currentAllowance = lpAllowance.toString();
+        needsApproval = lpAllowance < lpToRemove;
+
+        let gasEstimate = "0.025";
+        try {
+          const gasPrice = await client.getGasPrice();
+          gasEstimate = formatEther(180000n * gasPrice);
+        } catch { /* keep fallback */ }
+
+        const riskFlags: RiskFlag[] = [];
+        const resA = Number(formatUnits(reserveA, decimalsA));
+        const resB = Number(formatUnits(reserveB, decimalsB));
+        if (resA < 1000 || resB < 1000) {
+          riskFlags.push({ type: "low_liquidity", label: "Low pool liquidity — may receive less than expected", severity: "high" as RiskLevel });
+        }
+        if (slippage > 1) {
+          riskFlags.push({ type: "high_slippage", label: `High slippage tolerance (${slippage}%)`, severity: "medium" as RiskLevel });
+        }
+
+        const fnName = liquidityType === "KAS_TOKEN" ? "removeLiquidityKAS" : "removeLiquidity";
+        const contractInfo: ContractInfo = {
+          address: CONTRACTS.ROUTER,
+          functionName: fnName,
+          description: `Remove liquidity from ${tokenA}/${tokenB} pool via ZealousSwap Router`,
+        };
+
+        return {
+          tokenA,
+          tokenB,
+          lpAmount: formatUnits(lpToRemove, 18),
+          percentage: clampedPct,
+          expectedAmountA: formatUnits(expectedA, decimalsA),
+          expectedAmountB: formatUnits(expectedB, decimalsB),
+          amountAMin: formatUnits(rawAmountAMin, decimalsA),
+          amountBMin: formatUnits(rawAmountBMin, decimalsB),
+          slippage,
+          liquidityType,
+          needsApproval,
+          currentAllowance,
+          gasEstimate,
+          riskFlags,
+          contractInfo,
+          tx: {
+            router: CONTRACTS.ROUTER,
+            tokenAAddress: addressA,
+            tokenBAddress: addressB,
+            pairAddress,
+            rawLpAmount: lpToRemove.toString(),
+            rawAmountAMin: rawAmountAMin.toString(),
+            rawAmountBMin: rawAmountBMin.toString(),
+            deadline: deadline.toString(),
+          },
+        };
+      } catch (e) {
+        return { error: `Failed to prepare remove liquidity: ${e instanceof Error ? e.message : "Unknown error"}` };
+      }
+    },
+  }),
+
+  prepareFarmStake: tool({
+    description:
+      "Prepare a farm deposit (stake LP tokens) transaction for ZealousSwap MasterChef. Checks allowance, reads pending rewards and locking period.",
+    inputSchema: z.object({
+      pid: z.number().describe("Pool ID"),
+      amount: z.string().describe("Amount of LP tokens to stake (human-readable)"),
+      walletAddress: z.string().optional().describe("User wallet address"),
+    }),
+    execute: async ({ pid, amount, walletAddress }) => {
+      try {
+        const rawAmount = parseUnits(amount, 18);
+        const bigPid = BigInt(pid);
+
+        // Read pool info
+        const poolInfo = (await client.readContract({
+          address: CONTRACTS.MASTER_CHEF,
+          abi: masterchefAbi,
+          functionName: "getPoolInfo",
+          args: [bigPid],
+        })) as readonly [string, bigint, bigint, bigint, bigint, boolean, boolean, bigint];
+
+        const lpToken = poolInfo[0] as `0x${string}`;
+        const isActive = poolInfo[5];
+        if (!isActive) {
+          return { error: `Farm pool ${pid} is not active` };
+        }
+
+        // Get locking period, reward token
+        const [lockingPeriod, rewardToken] = await Promise.all([
+          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "lockingPeriod" }),
+          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardToken" }),
+        ]);
+
+        const rewardTokenSymbol = KASPLEX_TOKENS.find(
+          t => t.address?.toLowerCase() === (rewardToken as string).toLowerCase()
+        )?.symbol ?? "ZEAL";
+
+        // Get pair symbols for LP token label
+        let lpTokenSymbol = "LP";
+        try {
+          const [t0, t1] = await Promise.all([
+            client.readContract({ address: lpToken, abi: pairAbi, functionName: "token0" }),
+            client.readContract({ address: lpToken, abi: pairAbi, functionName: "token1" }),
+          ]);
+          const addrToSym = (addr: string) => KASPLEX_TOKENS.find(t => t.address?.toLowerCase() === addr.toLowerCase())?.symbol ?? "???";
+          lpTokenSymbol = `${addrToSym(t0 as string)}/${addrToSym(t1 as string)} LP`;
+        } catch { /* keep fallback */ }
+
+        // User info + pending rewards
+        let existingStake = "0";
+        let pendingRewards = "0";
+        if (walletAddress) {
+          const [userInfo, pending] = await Promise.all([
+            client.readContract({
+              address: CONTRACTS.MASTER_CHEF,
+              abi: masterchefAbi,
+              functionName: "userInfo",
+              args: [bigPid, walletAddress as `0x${string}`],
+            }),
+            client.readContract({
+              address: CONTRACTS.MASTER_CHEF,
+              abi: masterchefAbi,
+              functionName: "pendingReward",
+              args: [bigPid, walletAddress as `0x${string}`],
+            }),
+          ]);
+          const userAmount = (userInfo as [bigint, bigint, bigint])[0];
+          existingStake = formatUnits(userAmount, 18);
+          pendingRewards = formatUnits(pending as bigint, 18);
+        }
+
+        // Check LP allowance to MasterChef
+        let needsApproval = false;
+        let currentAllowance = "0";
+        if (walletAddress) {
+          const allowance = (await client.readContract({
+            address: lpToken,
+            abi: erc20Abi,
+            functionName: "allowance",
+            args: [walletAddress as `0x${string}`, CONTRACTS.MASTER_CHEF],
+          })) as bigint;
+          currentAllowance = allowance.toString();
+          needsApproval = allowance < rawAmount;
+        }
+
+        let gasEstimate = "0.02";
+        try {
+          const gasPrice = await client.getGasPrice();
+          gasEstimate = formatEther(150000n * gasPrice);
+        } catch { /* keep fallback */ }
+
+        const lockingSeconds = Number(lockingPeriod as bigint);
+        const lockingHours = (lockingSeconds / 3600).toFixed(1);
+
+        const riskFlags: RiskFlag[] = [
+          { type: "locking_period", label: `Locking period: ${lockingHours} hours`, severity: "medium" as RiskLevel },
+        ];
+        if (parseFloat(pendingRewards) > 0) {
+          riskFlags.push({
+            type: "pending_rewards_claim",
+            label: `Depositing will auto-claim ${parseFloat(pendingRewards).toFixed(4)} ${rewardTokenSymbol} in pending rewards`,
+            severity: "low" as RiskLevel,
+          });
+        }
+
+        return {
+          pid,
+          lpTokenSymbol,
+          amount,
+          existingStake,
+          pendingRewards,
+          rewardToken: rewardTokenSymbol,
+          lockingPeriod: `${lockingHours} hours`,
+          needsApproval,
+          currentAllowance,
+          gasEstimate,
+          riskFlags,
+          contractInfo: {
+            address: CONTRACTS.MASTER_CHEF,
+            functionName: "deposit",
+            description: `Stake ${lpTokenSymbol} in MasterChef farm pool ${pid}`,
+          },
+          tx: {
+            masterChef: CONTRACTS.MASTER_CHEF,
+            lpToken,
+            pid: bigPid.toString(),
+            rawAmount: rawAmount.toString(),
+          },
+        };
+      } catch (e) {
+        return { error: `Failed to prepare farm stake: ${e instanceof Error ? e.message : "Unknown error"}` };
+      }
+    },
+  }),
+
+  prepareFarmUnstake: tool({
+    description:
+      "Prepare a farm withdrawal (unstake LP tokens) from ZealousSwap MasterChef. Checks if withdrawal is allowed and shows pending rewards that will be auto-claimed.",
+    inputSchema: z.object({
+      pid: z.number().describe("Pool ID"),
+      amount: z.string().optional().describe("Amount to unstake (human-readable). Defaults to full staked balance."),
+      walletAddress: z.string().optional().describe("User wallet address"),
+    }),
+    execute: async ({ pid, amount, walletAddress }) => {
+      if (!walletAddress) {
+        return { error: "Wallet address is required for farm unstake" };
+      }
+
+      try {
+        const bigPid = BigInt(pid);
+
+        const [poolInfo, userInfo, pending, canWithdrawResult, rewardToken, lockingPeriod] = await Promise.all([
+          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "getPoolInfo", args: [bigPid] }),
+          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "userInfo", args: [bigPid, walletAddress as `0x${string}`] }),
+          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "pendingReward", args: [bigPid, walletAddress as `0x${string}`] }),
+          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "canWithdraw", args: [bigPid, walletAddress as `0x${string}`] }),
+          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardToken" }),
+          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "lockingPeriod" }),
+        ]);
+
+        const info = poolInfo as readonly [string, bigint, bigint, bigint, bigint, boolean, boolean, bigint];
+        const lpToken = info[0] as `0x${string}`;
+        const userStaked = (userInfo as [bigint, bigint, bigint])[0];
+        const pendingRewards = formatUnits(pending as bigint, 18);
+        const canWithdraw = canWithdrawResult as boolean;
+
+        if (userStaked === 0n) {
+          return { error: `You have no staked LP tokens in farm pool ${pid}` };
+        }
+
+        const rewardTokenSymbol = KASPLEX_TOKENS.find(
+          t => t.address?.toLowerCase() === (rewardToken as string).toLowerCase()
+        )?.symbol ?? "ZEAL";
+
+        // LP label
+        let lpTokenSymbol = "LP";
+        try {
+          const [t0, t1] = await Promise.all([
+            client.readContract({ address: lpToken, abi: pairAbi, functionName: "token0" }),
+            client.readContract({ address: lpToken, abi: pairAbi, functionName: "token1" }),
+          ]);
+          const addrToSym = (addr: string) => KASPLEX_TOKENS.find(t => t.address?.toLowerCase() === addr.toLowerCase())?.symbol ?? "???";
+          lpTokenSymbol = `${addrToSym(t0 as string)}/${addrToSym(t1 as string)} LP`;
+        } catch { /* keep fallback */ }
+
+        const rawAmount = amount ? parseUnits(amount, 18) : userStaked;
+        if (rawAmount > userStaked) {
+          return { error: `Requested ${amount} but only ${formatUnits(userStaked, 18)} staked` };
+        }
+
+        if (!canWithdraw) {
+          const lockSec = Number(lockingPeriod as bigint);
+          return { error: `Cannot withdraw yet — locking period (${(lockSec / 3600).toFixed(1)} hours) has not elapsed since last deposit` };
+        }
+
+        let gasEstimate = "0.015";
+        try {
+          const gasPrice = await client.getGasPrice();
+          gasEstimate = formatEther(120000n * gasPrice);
+        } catch { /* keep fallback */ }
+
+        const riskFlags: RiskFlag[] = [];
+        if (parseFloat(pendingRewards) > 0) {
+          riskFlags.push({
+            type: "rewards_claimed",
+            label: `Will auto-claim ${parseFloat(pendingRewards).toFixed(4)} ${rewardTokenSymbol} in pending rewards`,
+            severity: "low" as RiskLevel,
+          });
+        }
+
+        return {
+          pid,
+          lpTokenSymbol,
+          amount: formatUnits(rawAmount, 18),
+          pendingRewards,
+          rewardToken: rewardTokenSymbol,
+          canWithdraw,
+          gasEstimate,
+          riskFlags,
+          contractInfo: {
+            address: CONTRACTS.MASTER_CHEF,
+            functionName: "withdraw",
+            description: `Unstake ${lpTokenSymbol} from MasterChef farm pool ${pid}`,
+          },
+          tx: {
+            masterChef: CONTRACTS.MASTER_CHEF,
+            pid: bigPid.toString(),
+            rawAmount: rawAmount.toString(),
+          },
+        };
+      } catch (e) {
+        return { error: `Failed to prepare farm unstake: ${e instanceof Error ? e.message : "Unknown error"}` };
+      }
+    },
+  }),
+
+  prepareInfinityStake: tool({
+    description:
+      "Prepare a single-sided staking transaction for a ZealousSwap InfinityPool. Supports ZEAL, NACHO, and KASPER pools.",
+    inputSchema: z.object({
+      token: z.string().describe("Token to stake: ZEAL, NACHO, or KASPER"),
+      amount: z.string().describe("Amount to stake (human-readable)"),
+      walletAddress: z.string().optional().describe("User wallet address"),
+    }),
+    execute: async ({ token, amount, walletAddress }) => {
+      const sym = token.toUpperCase();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const poolMap: Record<string, { address: `0x${string}`; abi: any }> = {
+        ZEAL: { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi },
+        NACHO: { address: CONTRACTS.INFINITY_POOL_NACHO, abi: infinityPoolNachoAbi },
+        KASPER: { address: CONTRACTS.INFINITY_POOL_KASPER, abi: infinityPoolKasperAbi },
+      };
+
+      const pool = poolMap[sym];
+      if (!pool) {
+        return { error: `Unsupported InfinityPool token: ${token}. Supported: ZEAL, NACHO, KASPER` };
+      }
+
+      const tokenAddress = resolveTokenAddress(sym);
+      if (!tokenAddress) {
+        return { error: `Unknown token: ${token}` };
+      }
+
+      const decimals = getTokenDecimals(sym);
+      const rawAmount = parseUnits(amount, decimals);
+
+      try {
+        const [previewResult, exchangeRate, totalStaked] = await Promise.all([
+          client.readContract({ address: pool.address, abi: pool.abi, functionName: "previewStake", args: [rawAmount] }),
+          client.readContract({ address: pool.address, abi: pool.abi, functionName: "getExchangeRate" }),
+          client.readContract({ address: pool.address, abi: pool.abi, functionName: "totalStaked" }),
+        ]);
+
+        const xTokensReceived = formatUnits(previewResult as bigint, decimals);
+        const rate = formatUnits(exchangeRate as bigint, 18);
+        const staked = formatUnits(totalStaked as bigint, decimals);
+
+        // Check allowance
+        let needsApproval = false;
+        let currentAllowance = "0";
+        if (walletAddress) {
+          const allowance = (await client.readContract({
+            address: tokenAddress,
+            abi: erc20Abi,
+            functionName: "allowance",
+            args: [walletAddress as `0x${string}`, pool.address],
+          })) as bigint;
+          currentAllowance = allowance.toString();
+          needsApproval = allowance < rawAmount;
+        }
+
+        let gasEstimate = "0.015";
+        try {
+          const gasPrice = await client.getGasPrice();
+          gasEstimate = formatEther(120000n * gasPrice);
+        } catch { /* keep fallback */ }
+
+        const riskFlags: RiskFlag[] = [];
+        if (sym === "ZEAL") {
+          try {
+            const paused = (await client.readContract({
+              address: pool.address,
+              abi: infinityPoolZealAbi,
+              functionName: "emissionsPaused",
+            })) as boolean;
+            if (paused) {
+              riskFlags.push({ type: "emissions_paused", label: "ZEAL emissions are currently paused", severity: "high" as RiskLevel });
+            }
+          } catch { /* skip */ }
+        }
+
+        return {
+          token: sym,
+          amount,
+          xTokensReceived,
+          exchangeRate: rate,
+          totalStaked: staked,
+          needsApproval,
+          currentAllowance,
+          gasEstimate,
+          riskFlags,
+          contractInfo: {
+            address: pool.address,
+            functionName: "stake",
+            description: `Stake ${sym} in InfinityPool to receive x${sym} tokens`,
+          },
+          tx: {
+            pool: pool.address,
+            tokenAddress,
+            rawAmount: rawAmount.toString(),
+          },
+        };
+      } catch (e) {
+        return { error: `Failed to prepare InfinityPool stake: ${e instanceof Error ? e.message : "Unknown error"}` };
+      }
+    },
+  }),
+
+  prepareInfinityUnstake: tool({
+    description:
+      "Prepare an unstake transaction from a ZealousSwap InfinityPool. Burns xTokens to receive underlying tokens. Supports ZEAL, NACHO, and KASPER pools.",
+    inputSchema: z.object({
+      token: z.string().describe("Pool token: ZEAL, NACHO, or KASPER"),
+      amount: z.string().describe("Amount of xTokens to unstake (human-readable)"),
+      walletAddress: z.string().optional().describe("User wallet address"),
+    }),
+    execute: async ({ token, amount, walletAddress }) => {
+      const sym = token.toUpperCase();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const poolMap: Record<string, { address: `0x${string}`; abi: any; xTokenFn: string }> = {
+        ZEAL: { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, xTokenFn: "xZealToken" },
+        NACHO: { address: CONTRACTS.INFINITY_POOL_NACHO, abi: infinityPoolNachoAbi, xTokenFn: "xNachoToken" },
+        KASPER: { address: CONTRACTS.INFINITY_POOL_KASPER, abi: infinityPoolKasperAbi, xTokenFn: "xKasperToken" },
+      };
+
+      const pool = poolMap[sym];
+      if (!pool) {
+        return { error: `Unsupported InfinityPool token: ${token}. Supported: ZEAL, NACHO, KASPER` };
+      }
+
+      const decimals = getTokenDecimals(sym);
+      const rawXAmount = parseUnits(amount, decimals);
+
+      try {
+        // Get xToken address
+        const xTokenAddress = (await client.readContract({
+          address: pool.address,
+          abi: pool.abi,
+          functionName: pool.xTokenFn as "xZealToken",
+        })) as `0x${string}`;
+
+        const [previewResult, exchangeRate, totalStaked] = await Promise.all([
+          client.readContract({ address: pool.address, abi: pool.abi, functionName: "previewUnstake", args: [rawXAmount] }),
+          client.readContract({ address: pool.address, abi: pool.abi, functionName: "getExchangeRate" }),
+          client.readContract({ address: pool.address, abi: pool.abi, functionName: "totalStaked" }),
+        ]);
+
+        const tokensReceived = formatUnits(previewResult as bigint, decimals);
+        const rate = formatUnits(exchangeRate as bigint, 18);
+        const staked = formatUnits(totalStaked as bigint, decimals);
+
+        // Check xToken balance
+        if (walletAddress) {
+          const xBalance = (await client.readContract({
+            address: xTokenAddress,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [walletAddress as `0x${string}`],
+          })) as bigint;
+          if (xBalance < rawXAmount) {
+            return { error: `Insufficient x${sym} balance. You have ${formatUnits(xBalance, decimals)} but requested ${amount}` };
+          }
+        }
+
+        // Check xToken allowance to pool
+        let needsApproval = false;
+        let currentAllowance = "0";
+        if (walletAddress) {
+          const allowance = (await client.readContract({
+            address: xTokenAddress,
+            abi: erc20Abi,
+            functionName: "allowance",
+            args: [walletAddress as `0x${string}`, pool.address],
+          })) as bigint;
+          currentAllowance = allowance.toString();
+          needsApproval = allowance < rawXAmount;
+        }
+
+        let gasEstimate = "0.015";
+        try {
+          const gasPrice = await client.getGasPrice();
+          gasEstimate = formatEther(120000n * gasPrice);
+        } catch { /* keep fallback */ }
+
+        const riskFlags: RiskFlag[] = [];
+
+        return {
+          token: sym,
+          xAmount: amount,
+          tokensReceived,
+          exchangeRate: rate,
+          totalStaked: staked,
+          needsApproval,
+          currentAllowance,
+          gasEstimate,
+          riskFlags,
+          contractInfo: {
+            address: pool.address,
+            functionName: "unstake",
+            description: `Unstake x${sym} from InfinityPool to receive ${sym} tokens`,
+          },
+          tx: {
+            pool: pool.address,
+            xTokenAddress,
+            rawXAmount: rawXAmount.toString(),
+          },
+        };
+      } catch (e) {
+        return { error: `Failed to prepare InfinityPool unstake: ${e instanceof Error ? e.message : "Unknown error"}` };
+      }
+    },
+  }),
+
   discoverYieldOpportunities: tool({
     description:
       "Scan all ZealousSwap yield opportunities (farms + InfinityPools), compute APYs from on-chain data, assess risks, and return a ranked comparison. Use when the user asks about yield, best returns, where to invest, or DeFi opportunities.",

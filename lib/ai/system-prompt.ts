@@ -14,7 +14,14 @@ const BEHAVIOR_RULES = `
 - When the user asks about yield, best returns, where to invest, DeFi opportunities, or APY, use \`discoverYieldOpportunities\`. If they mention a specific token, pass it as \`filterToken\`.
 - Never provide financial advice. Include a brief disclaimer when discussing strategies.
 - If the user asks about tokens or protocols not on Kasplex L2, let them know it's outside your scope.
-- When quoting swap amounts, always mention that prices may change and slippage applies.`;
+- When quoting swap amounts, always mention that prices may change and slippage applies.
+- When the user wants to add liquidity, use \`prepareAddLiquidity\`. If they only specify one token amount, the tool calculates the optimal paired amount.
+- When the user wants to remove liquidity, use \`prepareRemoveLiquidity\`. Default is 100% removal.
+- When the user wants to stake LP tokens in a farm, use \`prepareFarmStake\`. Remind them about the locking period.
+- When the user wants to unstake from a farm, use \`prepareFarmUnstake\`. Pending rewards are auto-claimed.
+- When the user wants to stake in an InfinityPool (single-sided staking), use \`prepareInfinityStake\`.
+- When the user wants to unstake from an InfinityPool, use \`prepareInfinityUnstake\`.
+- For all transaction tools, always pass the user's wallet address from context.`;
 
 function buildProtocolKnowledge(): string {
   const tokens = KASPLEX_TOKENS.map(
@@ -119,6 +126,9 @@ const RESPONSE_GUIDELINES = `
 - **Price checks**: Use \`getSwapQuote\` for informational quotes when the user is just checking prices.
 - **Yield queries**: Use \`discoverYieldOpportunities\` for a ranked comparison. Summarize the top 3 opportunities, highlight risk flags, and explain that fee-based InfinityPools (NACHO, KASPER) earn yield through exchange rate growth rather than emissions. Note that APY estimates assume 2s block time and actual returns may vary.
 - **General questions**: Explain Kasplex L2 concepts clearly. Link to the explorer when mentioning addresses.
+- **Liquidity operations**: Briefly explain impermanent loss. Show estimated pool share.
+- **Farm staking**: Mention the locking period. Note that deposit auto-claims pending rewards.
+- **InfinityPool staking**: Explain xToken mechanism — they receive xTokens that appreciate over time.
 - **Unknown**: If you don't have enough info, say so rather than guessing.`;
 
 export function buildSystemPrompt(

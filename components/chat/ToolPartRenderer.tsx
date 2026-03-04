@@ -6,6 +6,12 @@ import { PoolReservesCard } from "./cards/PoolReservesCard";
 import { FarmsTableCard } from "./cards/FarmsTableCard";
 import { InfinityPoolRatesCard } from "./cards/InfinityPoolRatesCard";
 import { YieldOpportunitiesCard } from "./cards/YieldOpportunitiesCard";
+import { AddLiquidityCard } from "./cards/AddLiquidityCard";
+import { RemoveLiquidityCard } from "./cards/RemoveLiquidityCard";
+import { FarmStakeCard } from "./cards/FarmStakeCard";
+import { FarmUnstakeCard } from "./cards/FarmUnstakeCard";
+import { InfinityStakeCard } from "./cards/InfinityStakeCard";
+import { InfinityUnstakeCard } from "./cards/InfinityUnstakeCard";
 import type {
   SwapQuoteResult,
   PrepareSwapResult,
@@ -13,6 +19,12 @@ import type {
   ActiveFarmsResult,
   InfinityPoolRatesResult,
   YieldOpportunitiesResult,
+  PrepareAddLiquidityResult,
+  PrepareRemoveLiquidityResult,
+  PrepareFarmStakeResult,
+  PrepareFarmUnstakeResult,
+  PrepareInfinityStakeResult,
+  PrepareInfinityUnstakeResult,
 } from "@/lib/ai/tool-types";
 
 interface ToolPart {
@@ -60,6 +72,18 @@ export function ToolPartRenderer({ part }: { part: ToolPart }) {
       return <InfinityPoolRatesCard data={output as unknown as InfinityPoolRatesResult} />;
     case "discoverYieldOpportunities":
       return <YieldOpportunitiesCard data={output as unknown as YieldOpportunitiesResult} />;
+    case "prepareAddLiquidity":
+      return <AddLiquidityCard data={output as unknown as PrepareAddLiquidityResult} />;
+    case "prepareRemoveLiquidity":
+      return <RemoveLiquidityCard data={output as unknown as PrepareRemoveLiquidityResult} />;
+    case "prepareFarmStake":
+      return <FarmStakeCard data={output as unknown as PrepareFarmStakeResult} />;
+    case "prepareFarmUnstake":
+      return <FarmUnstakeCard data={output as unknown as PrepareFarmUnstakeResult} />;
+    case "prepareInfinityStake":
+      return <InfinityStakeCard data={output as unknown as PrepareInfinityStakeResult} />;
+    case "prepareInfinityUnstake":
+      return <InfinityUnstakeCard data={output as unknown as PrepareInfinityUnstakeResult} />;
     default:
       // Fallback: render raw JSON for unknown tools
       return (

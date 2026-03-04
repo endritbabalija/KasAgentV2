@@ -84,6 +84,169 @@ export interface PrepareSwapResult {
   error?: string;
 }
 
+// --- Add Liquidity types ---
+
+export interface PrepareAddLiquidityTx {
+  router: string;
+  tokenAAddress: string;
+  tokenBAddress: string;
+  rawAmountADesired: string;
+  rawAmountBDesired: string;
+  rawAmountAMin: string;
+  rawAmountBMin: string;
+  deadline: string;
+  value: string; // non-zero if one side is KAS
+}
+
+export interface PrepareAddLiquidityResult {
+  tokenA: string;
+  tokenB: string;
+  amountA: string;
+  amountB: string;
+  amountAMin: string;
+  amountBMin: string;
+  slippage: number;
+  estimatedLpTokens: string;
+  poolShare: string;
+  liquidityType: "KAS_TOKEN" | "TOKEN_TOKEN";
+  needsApprovalA: boolean;
+  needsApprovalB: boolean;
+  currentAllowanceA: string;
+  currentAllowanceB: string;
+  gasEstimate: string;
+  riskFlags: RiskFlag[];
+  contractInfo: ContractInfo;
+  tx: PrepareAddLiquidityTx;
+  error?: string;
+}
+
+// --- Remove Liquidity types ---
+
+export interface PrepareRemoveLiquidityTx {
+  router: string;
+  tokenAAddress: string;
+  tokenBAddress: string;
+  pairAddress: string;
+  rawLpAmount: string;
+  rawAmountAMin: string;
+  rawAmountBMin: string;
+  deadline: string;
+}
+
+export interface PrepareRemoveLiquidityResult {
+  tokenA: string;
+  tokenB: string;
+  lpAmount: string;
+  percentage: number;
+  expectedAmountA: string;
+  expectedAmountB: string;
+  amountAMin: string;
+  amountBMin: string;
+  slippage: number;
+  liquidityType: "KAS_TOKEN" | "TOKEN_TOKEN";
+  needsApproval: boolean;
+  currentAllowance: string;
+  gasEstimate: string;
+  riskFlags: RiskFlag[];
+  contractInfo: ContractInfo;
+  tx: PrepareRemoveLiquidityTx;
+  error?: string;
+}
+
+// --- Farm Stake types ---
+
+export interface PrepareFarmStakeTx {
+  masterChef: string;
+  lpToken: string;
+  pid: string;
+  rawAmount: string;
+}
+
+export interface PrepareFarmStakeResult {
+  pid: number;
+  lpTokenSymbol: string;
+  amount: string;
+  existingStake: string;
+  pendingRewards: string;
+  rewardToken: string;
+  lockingPeriod: string;
+  needsApproval: boolean;
+  currentAllowance: string;
+  gasEstimate: string;
+  riskFlags: RiskFlag[];
+  contractInfo: ContractInfo;
+  tx: PrepareFarmStakeTx;
+  error?: string;
+}
+
+// --- Farm Unstake types ---
+
+export interface PrepareFarmUnstakeTx {
+  masterChef: string;
+  pid: string;
+  rawAmount: string;
+}
+
+export interface PrepareFarmUnstakeResult {
+  pid: number;
+  lpTokenSymbol: string;
+  amount: string;
+  pendingRewards: string;
+  rewardToken: string;
+  canWithdraw: boolean;
+  gasEstimate: string;
+  riskFlags: RiskFlag[];
+  contractInfo: ContractInfo;
+  tx: PrepareFarmUnstakeTx;
+  error?: string;
+}
+
+// --- Infinity Stake types ---
+
+export interface PrepareInfinityStakeTx {
+  pool: string;
+  tokenAddress: string;
+  rawAmount: string;
+}
+
+export interface PrepareInfinityStakeResult {
+  token: string;
+  amount: string;
+  xTokensReceived: string;
+  exchangeRate: string;
+  totalStaked: string;
+  needsApproval: boolean;
+  currentAllowance: string;
+  gasEstimate: string;
+  riskFlags: RiskFlag[];
+  contractInfo: ContractInfo;
+  tx: PrepareInfinityStakeTx;
+  error?: string;
+}
+
+// --- Infinity Unstake types ---
+
+export interface PrepareInfinityUnstakeTx {
+  pool: string;
+  xTokenAddress: string;
+  rawXAmount: string;
+}
+
+export interface PrepareInfinityUnstakeResult {
+  token: string;
+  xAmount: string;
+  tokensReceived: string;
+  exchangeRate: string;
+  totalStaked: string;
+  needsApproval: boolean;
+  currentAllowance: string;
+  gasEstimate: string;
+  riskFlags: RiskFlag[];
+  contractInfo: ContractInfo;
+  tx: PrepareInfinityUnstakeTx;
+  error?: string;
+}
+
 // --- Yield Discovery types ---
 
 export type OpportunityType = "farm" | "infinity_pool";

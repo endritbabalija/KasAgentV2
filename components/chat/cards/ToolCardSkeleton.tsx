@@ -6,6 +6,12 @@ export function ToolCardSkeleton({ toolName }: { toolName: string }) {
     getActiveFarms: "Fetching active farms...",
     getInfinityPoolRates: "Fetching staking rates...",
     discoverYieldOpportunities: "Scanning DeFi opportunities...",
+    prepareAddLiquidity: "Preparing add liquidity...",
+    prepareRemoveLiquidity: "Preparing remove liquidity...",
+    prepareFarmStake: "Preparing farm stake...",
+    prepareFarmUnstake: "Preparing farm unstake...",
+    prepareInfinityStake: "Preparing InfinityPool stake...",
+    prepareInfinityUnstake: "Preparing InfinityPool unstake...",
   };
 
   return (
