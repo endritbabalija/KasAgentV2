@@ -45,3 +45,31 @@ export interface InfinityPoolRatesResult {
   pools: InfinityPoolInfo[];
   error?: string;
 }
+
+export interface PrepareSwapTx {
+  router: string;
+  tokenInAddress: string;
+  tokenOutAddress: string;
+  rawAmountIn: string;
+  rawAmountOut: string;
+  rawAmountOutMin: string;
+  path: string[];
+  deadline: string;
+  value: string;
+}
+
+export interface PrepareSwapResult {
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  amountOut: string;
+  amountOutMin: string;
+  slippage: number;
+  priceImpact: string;
+  dexFee: string;
+  swapType: "KAS_TO_TOKEN" | "TOKEN_TO_KAS" | "TOKEN_TO_TOKEN";
+  needsApproval: boolean;
+  currentAllowance: string;
+  tx: PrepareSwapTx;
+  error?: string;
+}

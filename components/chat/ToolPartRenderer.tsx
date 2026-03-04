@@ -1,11 +1,13 @@
 import { ToolCardSkeleton } from "./cards/ToolCardSkeleton";
 import { ToolErrorCard } from "./cards/ToolErrorCard";
 import { SwapQuoteCard } from "./cards/SwapQuoteCard";
+import { SwapExecutionCard } from "./cards/SwapExecutionCard";
 import { PoolReservesCard } from "./cards/PoolReservesCard";
 import { FarmsTableCard } from "./cards/FarmsTableCard";
 import { InfinityPoolRatesCard } from "./cards/InfinityPoolRatesCard";
 import type {
   SwapQuoteResult,
+  PrepareSwapResult,
   PoolReservesResult,
   ActiveFarmsResult,
   InfinityPoolRatesResult,
@@ -46,6 +48,8 @@ export function ToolPartRenderer({ part }: { part: ToolPart }) {
   switch (toolName) {
     case "getSwapQuote":
       return <SwapQuoteCard data={output as unknown as SwapQuoteResult} />;
+    case "prepareSwap":
+      return <SwapExecutionCard data={output as unknown as PrepareSwapResult} />;
     case "getPoolReserves":
       return <PoolReservesCard data={output as unknown as PoolReservesResult} />;
     case "getActiveFarms":

@@ -1,6 +1,7 @@
 export function ToolCardSkeleton({ toolName }: { toolName: string }) {
   const labels: Record<string, string> = {
     getSwapQuote: "Fetching swap quote...",
+    prepareSwap: "Preparing swap transaction...",
     getPoolReserves: "Fetching pool reserves...",
     getActiveFarms: "Fetching active farms...",
     getInfinityPoolRates: "Fetching staking rates...",

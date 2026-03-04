@@ -8,6 +8,7 @@ import {
   routerAbi,
   factoryAbi,
   pairAbi,
+  erc20Abi,
   masterchefAbi,
   infinityPoolZealAbi,
   infinityPoolNachoAbi,
@@ -33,6 +34,61 @@ function getTokenDecimals(symbol: string): number {
     (t) => t.symbol.toUpperCase() === symbol.toUpperCase()
   );
   return token?.decimals ?? 18;
+}
+
+async function calculatePriceImpact(
+  addressIn: `0x${string}`,
+  addressOut: `0x${string}`,
+  rawAmountIn: bigint,
+  rawAmountOut: bigint
+): Promise<string> {
+  try {
+    const pairAddress = (await client.readContract({
+      address: CONTRACTS.FACTORY,
+      abi: factoryAbi,
+      functionName: "getPair",
+      args: [addressIn, addressOut],
+    })) as `0x${string}`;
+
+    if (pairAddress === "0x0000000000000000000000000000000000000000") {
+      return "0";
+    }
+
+    const [reserves, token0] = await Promise.all([
+      client.readContract({
+        address: pairAddress,
+        abi: pairAbi,
+        functionName: "getReserves",
+      }),
+      client.readContract({
+        address: pairAddress,
+        abi: pairAbi,
+        functionName: "token0",
+      }),
+    ]);
+
+    const [reserve0, reserve1] = reserves as [bigint, bigint, number];
+    const isToken0In =
+      (token0 as string).toLowerCase() === addressIn.toLowerCase();
+    const reserveIn = isToken0In ? reserve0 : reserve1;
+    const reserveOut = isToken0In ? reserve1 : reserve0;
+
+    if (reserveIn === 0n || reserveOut === 0n) return "0";
+
+    // spot price = reserveOut / reserveIn (scaled by 1e18 for precision)
+    const spotPrice = (reserveOut * BigInt(1e18)) / reserveIn;
+    // execution price = amountOut / amountIn (scaled by 1e18)
+    const executionPrice = (rawAmountOut * BigInt(1e18)) / rawAmountIn;
+    // price impact = 1 - executionPrice / spotPrice
+    const impact =
+      spotPrice > 0n
+        ? Number(((spotPrice - executionPrice) * 10000n) / spotPrice) / 100
+        : 0;
+
+    return Math.max(0, impact).toFixed(2);
+  } catch {
+    return "0";
+  }
 }
 
 export const aiTools = {
@@ -330,6 +386,126 @@ export const aiTools = {
       } catch (e) {
         return {
           error: `Failed to fetch InfinityPool rates: ${e instanceof Error ? e.message : "Unknown error"}`,
+        };
+      }
+    },
+  }),
+
+  prepareSwap: tool({
+    description:
+      "Prepare a token swap transaction for the user to execute in their wallet. Returns all transaction parameters needed for on-chain execution. Use this when the user wants to actually swap tokens (not just check prices). Supported tokens: KAS, WKAS, ZEAL, NACHO, KASPER.",
+    inputSchema: z.object({
+      tokenIn: z
+        .string()
+        .describe("Symbol of the input token (e.g. KAS, ZEAL)"),
+      tokenOut: z
+        .string()
+        .describe("Symbol of the output token (e.g. NACHO, KASPER)"),
+      amountIn: z
+        .string()
+        .describe("Amount of input token in human-readable form (e.g. '10')"),
+      slippage: z
+        .number()
+        .optional()
+        .default(0.5)
+        .describe("Slippage tolerance in percent (default 0.5)"),
+      walletAddress: z
+        .string()
+        .optional()
+        .describe("User wallet address for allowance check"),
+    }),
+    execute: async ({ tokenIn, tokenOut, amountIn, slippage, walletAddress }) => {
+      const addressIn = resolveTokenAddress(tokenIn);
+      const addressOut = resolveTokenAddress(tokenOut);
+      if (!addressIn || !addressOut) {
+        return {
+          error: `Unknown token: ${!addressIn ? tokenIn : tokenOut}. Supported: KAS, WKAS, ZEAL, NACHO, KASPER`,
+        };
+      }
+      if (addressIn === addressOut) {
+        return { error: "Input and output tokens must be different" };
+      }
+
+      const decimalsIn = getTokenDecimals(tokenIn);
+      const decimalsOut = getTokenDecimals(tokenOut);
+      const rawAmountIn = parseUnits(amountIn, decimalsIn);
+
+      const isNativeIn = tokenIn.toUpperCase() === "KAS";
+      const isNativeOut = tokenOut.toUpperCase() === "KAS";
+      const swapType: "KAS_TO_TOKEN" | "TOKEN_TO_KAS" | "TOKEN_TO_TOKEN" =
+        isNativeIn ? "KAS_TO_TOKEN" : isNativeOut ? "TOKEN_TO_KAS" : "TOKEN_TO_TOKEN";
+
+      try {
+        const amounts = (await client.readContract({
+          address: CONTRACTS.ROUTER,
+          abi: routerAbi,
+          functionName: "getAmountsOut",
+          args: [rawAmountIn, [addressIn, addressOut], false],
+        })) as bigint[];
+
+        const rawAmountOut = amounts[amounts.length - 1];
+        const slippageBps = BigInt(Math.round(slippage * 100));
+        const rawAmountOutMin =
+          rawAmountOut - (rawAmountOut * slippageBps) / 10000n;
+        const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
+
+        // Check allowance for ERC-20 inputs
+        let needsApproval = false;
+        let currentAllowance = "0";
+        if (!isNativeIn && walletAddress) {
+          const tokenAddress = KASPLEX_TOKENS.find(
+            (t) => t.symbol.toUpperCase() === tokenIn.toUpperCase()
+          )?.address;
+          if (tokenAddress) {
+            const allowance = (await client.readContract({
+              address: tokenAddress,
+              abi: erc20Abi,
+              functionName: "allowance",
+              args: [
+                walletAddress as `0x${string}`,
+                CONTRACTS.ROUTER,
+              ],
+            })) as bigint;
+            currentAllowance = allowance.toString();
+            needsApproval = allowance < rawAmountIn;
+          }
+        }
+
+        // Price impact
+        const priceImpact = await calculatePriceImpact(
+          addressIn,
+          addressOut,
+          rawAmountIn,
+          rawAmountOut
+        );
+
+        return {
+          tokenIn,
+          tokenOut,
+          amountIn,
+          amountOut: formatUnits(rawAmountOut, decimalsOut),
+          amountOutMin: formatUnits(rawAmountOutMin, decimalsOut),
+          slippage,
+          priceImpact,
+          dexFee: "0.3",
+          swapType,
+          needsApproval,
+          currentAllowance,
+          tx: {
+            router: CONTRACTS.ROUTER,
+            tokenInAddress: addressIn,
+            tokenOutAddress: addressOut,
+            rawAmountIn: rawAmountIn.toString(),
+            rawAmountOut: rawAmountOut.toString(),
+            rawAmountOutMin: rawAmountOutMin.toString(),
+            path: [addressIn, addressOut],
+            deadline: deadline.toString(),
+            value: isNativeIn ? rawAmountIn.toString() : "0",
+          },
+        };
+      } catch (e) {
+        return {
+          error: `Failed to prepare swap: ${e instanceof Error ? e.message : "No liquidity or invalid pair"}`,
         };
       }
     },

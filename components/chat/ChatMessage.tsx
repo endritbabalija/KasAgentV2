@@ -48,12 +48,19 @@ export function ChatMessage({ message }: { message: UIMessage }) {
       textBuffer += part.text;
     } else if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
       flushText();
-      const toolPart = part as unknown as {
-        toolName: string;
-        state: string;
-        output?: unknown;
-        errorText?: string;
-        toolCallId: string;
+      const raw = part as unknown as Record<string, unknown>;
+      // Static tool parts use type "tool-{name}" with no toolName prop;
+      // dynamic tool parts use type "dynamic-tool" with a toolName prop.
+      const toolName =
+        part.type === "dynamic-tool"
+          ? (raw.toolName as string)
+          : part.type.split("-").slice(1).join("-");
+      const toolPart = {
+        toolName,
+        state: raw.state as string,
+        output: raw.output as unknown,
+        errorText: raw.errorText as string | undefined,
+        toolCallId: raw.toolCallId as string,
       };
       elements.push(
         <div key={toolPart.toolCallId} className="flex justify-start">
