@@ -3,8 +3,8 @@
 import { useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { usePortfolio } from "@/hooks/usePortfolio";
-import { useInfinityPoolData } from "@/hooks/useInfinityPoolData";
+import type { Portfolio } from "@/hooks/usePortfolio";
+import type { InfinityPoolInfo } from "@/hooks/useInfinityPoolData";
 import {
   serializePortfolio,
   serializeInfinityPools,
@@ -15,10 +15,12 @@ import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { WelcomeScreen } from "./WelcomeScreen";
 
-export function ChatContainer() {
-  const portfolio = usePortfolio();
-  const { pools } = useInfinityPoolData();
+interface ChatContainerProps {
+  portfolio: Portfolio;
+  pools: InfinityPoolInfo[];
+}
 
+export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
   // Store latest serialized data in refs so the transport's body function
   // always reads fresh values without needing to recreate the transport.
   const portfolioRef = useRef<SerializedPortfolio | null>(null);
@@ -70,19 +72,40 @@ export function ChatContainer() {
   return (
     <div className="flex flex-col h-full">
       {hasMessages ? (
-        <MessageList messages={messages} isWaiting={isWaiting} error={error} />
+        <>
+          <MessageList
+            messages={messages}
+            isWaiting={isWaiting}
+            error={error}
+            onSendMessage={handleSuggestionClick}
+          />
+          <ChatInput
+            onSubmit={handleSubmit}
+            onStop={stop}
+            isLoading={isLoading}
+            isConnected={portfolio.isConnected}
+          />
+        </>
       ) : (
-        <WelcomeScreen
-          isConnected={portfolio.isConnected}
-          onSuggestionClick={handleSuggestionClick}
-        />
+        <div className="flex-1 flex flex-col">
+          <div className="flex-1" />
+          <div className="flex flex-col items-center px-4 pb-6">
+            <WelcomeScreen
+              isConnected={portfolio.isConnected}
+              onSuggestionClick={handleSuggestionClick}
+            />
+            <div className="w-full max-w-2xl mt-6">
+              <ChatInput
+                onSubmit={handleSubmit}
+                onStop={stop}
+                isLoading={isLoading}
+                isConnected={portfolio.isConnected}
+              />
+            </div>
+          </div>
+          <div className="flex-[0.6]" />
+        </div>
       )}
-      <ChatInput
-        onSubmit={handleSubmit}
-        onStop={stop}
-        isLoading={isLoading}
-        isConnected={portfolio.isConnected}
-      />
     </div>
   );
 }

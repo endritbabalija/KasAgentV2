@@ -5,17 +5,10 @@ import type { FarmPosition } from "@/hooks/useFarmPositions";
 import type { StakingPosition } from "@/hooks/useStakingPositions";
 import type { FarmGlobals } from "@/hooks/useActiveFarms";
 import type { InfinityPoolInfo } from "@/hooks/useInfinityPoolData";
-import { KASPLEX_TOKENS } from "@/config/tokens";
+import { getTokenSymbol } from "@/lib/token-utils";
 
 function fmt(value: bigint, decimals: number = 18): string {
   return formatUnits(value, decimals);
-}
-
-function getTokenSymbol(address: string): string {
-  const token = KASPLEX_TOKENS.find(
-    (t) => t.address?.toLowerCase() === address.toLowerCase()
-  );
-  return token?.symbol ?? address;
 }
 
 export interface SerializedPortfolio {

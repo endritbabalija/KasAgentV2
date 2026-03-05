@@ -1,24 +1,56 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import type { UIMessage } from "ai";
 import { ChatMessage } from "./ChatMessage";
+import { QuickActions } from "./QuickActions";
+import { getQuickActions, type QuickAction } from "@/lib/ai/quick-actions";
 
 interface MessageListProps {
   messages: UIMessage[];
   isWaiting: boolean;
   error: Error | undefined;
+  onSendMessage: (text: string) => void;
 }
 
-export function MessageList({ messages, isWaiting, error }: MessageListProps) {
+export function MessageList({
+  messages,
+  isWaiting,
+  error,
+  onSendMessage,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isWaiting, error]);
 
+  // Extract quick actions from the last assistant message's tool parts
+  const quickActions = useMemo<QuickAction[]>(() => {
+    if (isWaiting || messages.length === 0) return [];
+
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role !== "assistant") return [];
+
+    const actions: QuickAction[] = [];
+    for (const part of lastMsg.parts) {
+      if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
+        const raw = part as unknown as Record<string, unknown>;
+        const toolName =
+          part.type === "dynamic-tool"
+            ? (raw.toolName as string)
+            : part.type.split("-").slice(1).join("-");
+        if (raw.state === "result" && raw.output) {
+          actions.push(...getQuickActions(toolName, raw.output));
+        }
+      }
+    }
+    return actions;
+  }, [messages, isWaiting]);
+
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+    <div className="flex-1 overflow-y-auto pt-6 pb-2">
+      <div className="max-w-3xl mx-auto px-4 space-y-4">
       {messages.map((message) => (
         <ChatMessage key={message.id} message={message} />
       ))}
@@ -45,7 +77,11 @@ export function MessageList({ messages, isWaiting, error }: MessageListProps) {
           </div>
         </div>
       )}
+      {quickActions.length > 0 && !isWaiting && (
+        <QuickActions actions={quickActions} onSend={onSendMessage} />
+      )}
       <div ref={bottomRef} />
+      </div>
     </div>
   );
 }

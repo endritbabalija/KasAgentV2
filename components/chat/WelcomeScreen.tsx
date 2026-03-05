@@ -17,7 +17,7 @@ export function WelcomeScreen({
   onSuggestionClick,
 }: WelcomeScreenProps) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-4">
+    <div className="flex flex-col items-center">
       <div className="text-center mb-8">
         <h2 className="text-3xl font-bold mb-2 text-zinc-100">KasAgent</h2>
         <p className="text-zinc-400">
