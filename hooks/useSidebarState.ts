@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
-export function useSidebarState(defaultOpen = true) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+export function useSidebarState() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Set initial state based on screen width (open on md+, closed on mobile)
+  useEffect(() => {
+    setIsOpen(window.innerWidth >= 768);
+  }, []);
 
   const toggle = useCallback(() => setIsOpen((prev) => !prev), []);
   const open = useCallback(() => setIsOpen(true), []);

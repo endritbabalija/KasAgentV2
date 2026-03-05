@@ -1,7 +1,7 @@
 "use client";
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { PanelLeftClose, PanelLeft } from "lucide-react";
+import { PanelLeftClose, PanelLeft, Menu } from "lucide-react";
 import type { Portfolio } from "@/hooks/usePortfolio";
 import { formatTokenAmount } from "@/lib/format";
 import { NetworkStatus } from "./NetworkStatus";
@@ -21,18 +21,24 @@ export function AppHeader({
   const kasBalance = portfolio.balances.find((b) => b.symbol === "KAS");
 
   return (
-    <header className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
-      {/* Sidebar toggle */}
+    <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-zinc-800 shrink-0">
+      {/* Sidebar toggle — visible on all screen sizes */}
       <button
         onClick={onSidebarToggle}
-        className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-800 transition-colors"
+        className="flex items-center justify-center w-10 h-10 min-w-[44px] min-h-[44px] rounded-lg hover:bg-zinc-800 transition-colors"
         aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
       >
-        {isSidebarOpen ? (
-          <PanelLeftClose className="w-5 h-5 text-zinc-400" />
-        ) : (
-          <PanelLeft className="w-5 h-5 text-zinc-400" />
-        )}
+        {/* Mobile: hamburger icon, Desktop: panel icons */}
+        <span className="md:hidden">
+          <Menu className="w-5 h-5 text-zinc-400" />
+        </span>
+        <span className="hidden md:block">
+          {isSidebarOpen ? (
+            <PanelLeftClose className="w-5 h-5 text-zinc-400" />
+          ) : (
+            <PanelLeft className="w-5 h-5 text-zinc-400" />
+          )}
+        </span>
       </button>
 
       {/* Logo */}
@@ -54,8 +60,12 @@ export function AppHeader({
         </div>
       )}
 
-      {/* Wallet connect */}
-      <ConnectButton />
+      {/* Wallet connect — compact on mobile */}
+      <ConnectButton
+        accountStatus={{ smallScreen: "avatar", largeScreen: "full" }}
+        chainStatus={{ smallScreen: "icon", largeScreen: "full" }}
+        showBalance={{ smallScreen: false, largeScreen: true }}
+      />
     </header>
   );
 }

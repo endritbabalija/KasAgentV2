@@ -50,7 +50,7 @@ export function MessageList({
 
   return (
     <div className="flex-1 overflow-y-auto pt-6 pb-2">
-      <div className="max-w-3xl mx-auto px-4 space-y-4">
+      <div className="max-w-3xl mx-auto px-3 sm:px-4 space-y-4">
       {messages.map((message) => (
         <ChatMessage key={message.id} message={message} />
       ))}
@@ -70,7 +70,7 @@ export function MessageList({
       )}
       {error && (
         <div className="flex justify-start">
-          <div className="bg-red-950/50 border border-red-800/50 rounded-2xl px-4 py-3 max-w-[85%]">
+          <div className="bg-red-950/50 border border-red-800/50 rounded-2xl px-4 py-3 max-w-[95%] sm:max-w-[85%]">
             <p className="text-sm text-red-400">
               Something went wrong. Please try again.
             </p>

@@ -89,7 +89,7 @@ export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
       ) : (
         <div className="flex-1 flex flex-col">
           <div className="flex-1" />
-          <div className="flex flex-col items-center px-4 pb-6">
+          <div className="flex flex-col items-center px-3 sm:px-4 pb-6">
             <WelcomeScreen
               isConnected={portfolio.isConnected}
               onSuggestionClick={handleSuggestionClick}

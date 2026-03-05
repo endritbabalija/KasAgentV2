@@ -18,7 +18,7 @@ export function ChatMessage({ message }: { message: UIMessage }) {
 
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl px-4 py-3 bg-zinc-700 text-zinc-100">
+        <div className="max-w-[95%] sm:max-w-[85%] rounded-2xl px-4 py-3 bg-zinc-700 text-zinc-100">
           <p className="whitespace-pre-wrap">{text}</p>
         </div>
       </div>
@@ -34,7 +34,7 @@ export function ChatMessage({ message }: { message: UIMessage }) {
     if (trimmed) {
       elements.push(
         <div key={`text-${elements.length}`} className="flex justify-start">
-          <div className="max-w-[85%] rounded-2xl px-4 py-3 bg-zinc-800/50 border border-zinc-700/50 text-zinc-200">
+          <div className="max-w-[95%] sm:max-w-[85%] rounded-2xl px-4 py-3 bg-zinc-800/50 border border-zinc-700/50 text-zinc-200">
             <MarkdownRenderer content={trimmed} />
           </div>
         </div>
@@ -64,7 +64,7 @@ export function ChatMessage({ message }: { message: UIMessage }) {
       };
       elements.push(
         <div key={toolPart.toolCallId} className="flex justify-start">
-          <div className="max-w-[85%] w-full">
+          <div className="max-w-[95%] sm:max-w-[85%] w-full">
             <ToolPartRenderer part={toolPart} />
           </div>
         </div>

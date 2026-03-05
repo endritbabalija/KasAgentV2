@@ -19,14 +19,14 @@ export function WelcomeScreen({
   return (
     <div className="flex flex-col items-center">
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold mb-2 text-zinc-100">KasAgent</h2>
+        <h2 className="text-2xl sm:text-3xl font-bold mb-2 text-zinc-100">KasAgent</h2>
         <p className="text-zinc-400">
           AI-powered DeFi copilot for Kasplex L2
         </p>
       </div>
 
       {isConnected ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full px-2 sm:px-0">
           {SUGGESTIONS.map((suggestion) => (
             <button
               key={suggestion}

@@ -10,7 +10,7 @@ import { ChatContainer } from "@/components/chat/ChatContainer";
 export default function Home() {
   const portfolio = usePortfolio();
   const { pools } = useInfinityPoolData();
-  const { isOpen, toggle } = useSidebarState(true);
+  const { isOpen, toggle, close } = useSidebarState();
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0a] text-zinc-100">
@@ -26,6 +26,7 @@ export default function Home() {
           pools={pools}
           isOpen={isOpen}
           onToggle={toggle}
+          onClose={close}
         />
 
         <main className="flex-1 overflow-hidden">

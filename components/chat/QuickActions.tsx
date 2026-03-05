@@ -16,7 +16,7 @@ export function QuickActions({ actions, onSend }: QuickActionsProps) {
         <button
           key={action.label}
           onClick={() => onSend(action.message)}
-          className="px-4 py-2 bg-zinc-800/50 border border-zinc-700/50 rounded-xl text-sm text-zinc-300 hover:bg-zinc-800 hover:border-zinc-600 transition-colors"
+          className="px-4 py-2 min-h-[44px] bg-zinc-800/50 border border-zinc-700/50 rounded-xl text-sm text-zinc-300 hover:bg-zinc-800 hover:border-zinc-600 transition-colors"
         >
           {action.label}
         </button>
