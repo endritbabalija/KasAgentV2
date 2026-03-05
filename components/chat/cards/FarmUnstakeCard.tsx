@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useState } from "react";
+import { useAccount, useConfig, useWriteContract } from "wagmi";
+import { waitForTransactionReceipt } from "@wagmi/core";
 import { masterchefAbi } from "@/config/abis";
 import type { PrepareFarmUnstakeResult } from "@/lib/ai/tool-types";
 import {
@@ -18,42 +19,37 @@ type FarmUnstakeState = "idle" | "withdrawing" | "success" | "error" | "cancelle
 
 export function FarmUnstakeCard({ data }: { data: PrepareFarmUnstakeResult }) {
   const { isConnected } = useAccount();
+  const config = useConfig();
   const [state, setState] = useState<FarmUnstakeState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [txHash, setTxHash] = useState<string>();
 
-  const {
-    writeContract: writeWithdraw,
-    data: withdrawTxHash,
-    error: withdrawError,
-    reset: resetWithdraw,
-  } = useWriteContract();
+  const { writeContractAsync: writeWithdrawAsync, reset: resetWithdraw } = useWriteContract();
 
-  const { isSuccess: withdrawConfirmed } = useWaitForTransactionReceipt({ hash: withdrawTxHash });
-
-  useEffect(() => {
-    if (withdrawConfirmed && state === "withdrawing") {
-      setState("success");
-    }
-  }, [withdrawConfirmed, state]);
-
-  useEffect(() => {
-    if (withdrawError) { setState("error"); setErrorMsg(withdrawError.message.split("\n")[0]); }
-  }, [withdrawError]);
-
-  function handleExecute() {
+  async function handleExecute() {
     setErrorMsg("");
-    setState("withdrawing");
-    writeWithdraw({
-      address: data.tx.masterChef as `0x${string}`,
-      abi: masterchefAbi,
-      functionName: "withdraw",
-      args: [BigInt(data.tx.pid), BigInt(data.tx.rawAmount)],
-    });
+    try {
+      setState("withdrawing");
+      const hash = await writeWithdrawAsync({
+        address: data.tx.masterChef as `0x${string}`,
+        abi: masterchefAbi,
+        functionName: "withdraw",
+        args: [BigInt(data.tx.pid), BigInt(data.tx.rawAmount)],
+      });
+
+      setTxHash(hash);
+      await waitForTransactionReceipt(config, { hash });
+      setState("success");
+    } catch (err) {
+      setState("error");
+      setErrorMsg((err as Error).message.split("\n")[0]);
+    }
   }
 
   function handleRetry() {
     setState("idle");
     setErrorMsg("");
+    setTxHash(undefined);
     resetWithdraw();
   }
 
@@ -91,7 +87,7 @@ export function FarmUnstakeCard({ data }: { data: PrepareFarmUnstakeResult }) {
         {!isConnected ? (
           <div className="text-sm text-zinc-500 text-center py-2">Connect your wallet to unstake</div>
         ) : state === "success" ? (
-          <SuccessState message="LP tokens unstaked! Rewards claimed." txHash={withdrawTxHash} />
+          <SuccessState message="LP tokens unstaked! Rewards claimed." txHash={txHash} />
         ) : state === "error" ? (
           <ErrorState message={errorMsg} onRetry={handleRetry} />
         ) : (

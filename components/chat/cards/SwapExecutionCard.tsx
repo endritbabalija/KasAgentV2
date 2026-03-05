@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useState } from "react";
+import { useAccount, useConfig, useWriteContract } from "wagmi";
+import { waitForTransactionReceipt } from "@wagmi/core";
 import { routerAbi } from "@/config/abis";
 import { erc20Abi } from "@/config/abis";
 import type { PrepareSwapResult, RiskLevel } from "@/lib/ai/tool-types";
@@ -45,134 +46,89 @@ const riskIconColors: Record<RiskLevel, string> = {
   high: "text-red-500",
 };
 
-type SwapState = "idle" | "approving" | "approved" | "swapping" | "success" | "error" | "cancelled";
+type SwapState = "idle" | "approving" | "swapping" | "success" | "error" | "cancelled";
 
 export function SwapExecutionCard({ data }: { data: PrepareSwapResult }) {
   const { address, isConnected } = useAccount();
+  const config = useConfig();
   const [state, setState] = useState<SwapState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [txHash, setTxHash] = useState<string>();
   const [contractExpanded, setContractExpanded] = useState(false);
 
-  // Approve contract write
-  const {
-    writeContract: writeApprove,
-    data: approveTxHash,
-    error: approveError,
-    reset: resetApprove,
-  } = useWriteContract();
+  const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
+  const { writeContractAsync: writeSwapAsync, reset: resetSwap } = useWriteContract();
 
-  // Swap contract write
-  const {
-    writeContract: writeSwap,
-    data: swapTxHash,
-    error: swapError,
-    reset: resetSwap,
-  } = useWriteContract();
-
-  // Wait for approve receipt
-  const { isSuccess: approveConfirmed } = useWaitForTransactionReceipt({
-    hash: approveTxHash,
-  });
-
-  // Wait for swap receipt
-  const { isSuccess: swapConfirmed } = useWaitForTransactionReceipt({
-    hash: swapTxHash,
-  });
-
-  // Handle approve confirmation -> trigger swap
-  useEffect(() => {
-    if (approveConfirmed && state === "approving") {
-      setState("approved");
-      executeSwap();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveConfirmed]);
-
-  // Handle swap confirmation
-  useEffect(() => {
-    if (swapConfirmed && state === "swapping") {
-      setState("success");
-    }
-  }, [swapConfirmed, state]);
-
-  // Handle errors
-  useEffect(() => {
-    if (approveError) {
-      setState("error");
-      setErrorMsg(approveError.message.split("\n")[0]);
-    }
-  }, [approveError]);
-
-  useEffect(() => {
-    if (swapError) {
-      setState("error");
-      setErrorMsg(swapError.message.split("\n")[0]);
-    }
-  }, [swapError]);
-
-  function executeSwap() {
-    const { tx, swapType } = data;
-    const path = tx.path as `0x${string}`[];
-    const deadline = BigInt(tx.deadline);
-
-    setState("swapping");
-
-    if (swapType === "KAS_TO_TOKEN") {
-      writeSwap({
-        address: tx.router as `0x${string}`,
-        abi: routerAbi,
-        functionName: "swapExactKASForTokens",
-        args: [BigInt(tx.rawAmountOutMin), path, address!, deadline],
-        value: BigInt(tx.value),
-      });
-    } else if (swapType === "TOKEN_TO_KAS") {
-      writeSwap({
-        address: tx.router as `0x${string}`,
-        abi: routerAbi,
-        functionName: "swapTokensForExactKAS",
-        args: [
-          BigInt(tx.rawAmountOutMin),
-          BigInt(tx.rawAmountIn),
-          path,
-          address!,
-          deadline,
-        ],
-      });
-    } else {
-      writeSwap({
-        address: tx.router as `0x${string}`,
-        abi: routerAbi,
-        functionName: "swapExactTokensForTokens",
-        args: [
-          BigInt(tx.rawAmountIn),
-          BigInt(tx.rawAmountOutMin),
-          path,
-          address!,
-          deadline,
-        ],
-      });
-    }
-  }
-
-  function handleExecute() {
+  async function handleExecute() {
     setErrorMsg("");
+    try {
+      if (data.needsApproval) {
+        setState("approving");
+        const approveHash = await writeApproveAsync({
+          address: data.tx.tokenInAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [data.tx.router as `0x${string}`, BigInt(data.tx.rawAmountIn)],
+        });
+        await waitForTransactionReceipt(config, { hash: approveHash });
+      }
 
-    if (data.needsApproval) {
-      setState("approving");
-      writeApprove({
-        address: data.tx.tokenInAddress as `0x${string}`,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [data.tx.router as `0x${string}`, BigInt(data.tx.rawAmountIn)],
-      });
-    } else {
-      executeSwap();
+      const { tx, swapType } = data;
+      const path = tx.path as `0x${string}`[];
+      const deadline = BigInt(tx.deadline);
+
+      setState("swapping");
+
+      let hash: `0x${string}`;
+      if (swapType === "KAS_TO_TOKEN") {
+        hash = await writeSwapAsync({
+          address: tx.router as `0x${string}`,
+          abi: routerAbi,
+          functionName: "swapExactKASForTokens",
+          args: [BigInt(tx.rawAmountOutMin), path, address!, deadline],
+          value: BigInt(tx.value),
+        });
+      } else if (swapType === "TOKEN_TO_KAS") {
+        hash = await writeSwapAsync({
+          address: tx.router as `0x${string}`,
+          abi: routerAbi,
+          functionName: "swapTokensForExactKAS",
+          args: [
+            BigInt(tx.rawAmountOutMin),
+            BigInt(tx.rawAmountIn),
+            path,
+            address!,
+            deadline,
+          ],
+        });
+      } else {
+        hash = await writeSwapAsync({
+          address: tx.router as `0x${string}`,
+          abi: routerAbi,
+          functionName: "swapExactTokensForTokens",
+          args: [
+            BigInt(tx.rawAmountIn),
+            BigInt(tx.rawAmountOutMin),
+            path,
+            address!,
+            deadline,
+          ],
+        });
+      }
+
+      setTxHash(hash);
+      await waitForTransactionReceipt(config, { hash });
+      setState("success");
+    } catch (err) {
+      setState("error");
+      setErrorMsg((err as Error).message.split("\n")[0]);
     }
   }
 
   function handleRetry() {
     setState("idle");
     setErrorMsg("");
+    setTxHash(undefined);
     resetApprove();
     resetSwap();
   }
@@ -331,9 +287,9 @@ export function SwapExecutionCard({ data }: { data: PrepareSwapResult }) {
               </svg>
               Swap confirmed!
             </div>
-            {swapTxHash && (
+            {txHash && (
               <a
-                href={`https://explorer.kasplex.org/tx/${swapTxHash}`}
+                href={`https://explorer.kasplex.org/tx/${txHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-teal-400 hover:text-teal-300 underline break-all"

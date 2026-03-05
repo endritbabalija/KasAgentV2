@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useState } from "react";
+import { useAccount, useConfig, useWriteContract } from "wagmi";
+import { waitForTransactionReceipt } from "@wagmi/core";
 import { erc20Abi, infinityPoolZealAbi, infinityPoolNachoAbi, infinityPoolKasperAbi } from "@/config/abis";
 import type { PrepareInfinityUnstakeResult } from "@/lib/ai/tool-types";
 import {
@@ -26,75 +27,52 @@ type InfinityUnstakeState = "idle" | "approving" | "unstaking" | "success" | "er
 
 export function InfinityUnstakeCard({ data }: { data: PrepareInfinityUnstakeResult }) {
   const { isConnected } = useAccount();
+  const config = useConfig();
   const [state, setState] = useState<InfinityUnstakeState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [txHash, setTxHash] = useState<string>();
 
-  const {
-    writeContract: writeApprove,
-    data: approveTxHash,
-    error: approveError,
-    reset: resetApprove,
-  } = useWriteContract();
+  const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
+  const { writeContractAsync: writeUnstakeAsync, reset: resetUnstake } = useWriteContract();
 
-  const {
-    writeContract: writeUnstake,
-    data: unstakeTxHash,
-    error: unstakeError,
-    reset: resetUnstake,
-  } = useWriteContract();
-
-  const { isSuccess: approveConfirmed } = useWaitForTransactionReceipt({ hash: approveTxHash });
-  const { isSuccess: unstakeConfirmed } = useWaitForTransactionReceipt({ hash: unstakeTxHash });
-
-  useEffect(() => {
-    if (approveConfirmed && state === "approving") {
-      executeUnstake();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveConfirmed]);
-
-  useEffect(() => {
-    if (unstakeConfirmed && state === "unstaking") {
-      setState("success");
-    }
-  }, [unstakeConfirmed, state]);
-
-  useEffect(() => {
-    if (approveError) { setState("error"); setErrorMsg(approveError.message.split("\n")[0]); }
-  }, [approveError]);
-  useEffect(() => {
-    if (unstakeError) { setState("error"); setErrorMsg(unstakeError.message.split("\n")[0]); }
-  }, [unstakeError]);
-
-  function executeUnstake() {
-    setState("unstaking");
-    const abi = poolAbis[data.token] ?? infinityPoolZealAbi;
-    writeUnstake({
-      address: data.tx.pool as `0x${string}`,
-      abi,
-      functionName: "unstake",
-      args: [BigInt(data.tx.rawXAmount)],
-    });
-  }
-
-  function handleExecute() {
+  async function handleExecute() {
     setErrorMsg("");
-    if (data.needsApproval) {
-      setState("approving");
-      writeApprove({
-        address: data.tx.xTokenAddress as `0x${string}`,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [data.tx.pool as `0x${string}`, BigInt(data.tx.rawXAmount)],
+    try {
+      // Approve x-token if needed
+      if (data.needsApproval) {
+        setState("approving");
+        const approveHash = await writeApproveAsync({
+          address: data.tx.xTokenAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [data.tx.pool as `0x${string}`, BigInt(data.tx.rawXAmount)],
+        });
+        await waitForTransactionReceipt(config, { hash: approveHash });
+      }
+
+      // Unstake
+      setState("unstaking");
+      const abi = poolAbis[data.token] ?? infinityPoolZealAbi;
+      const hash = await writeUnstakeAsync({
+        address: data.tx.pool as `0x${string}`,
+        abi,
+        functionName: "unstake",
+        args: [BigInt(data.tx.rawXAmount)],
       });
-    } else {
-      executeUnstake();
+
+      setTxHash(hash);
+      await waitForTransactionReceipt(config, { hash });
+      setState("success");
+    } catch (err) {
+      setState("error");
+      setErrorMsg((err as Error).message.split("\n")[0]);
     }
   }
 
   function handleRetry() {
     setState("idle");
     setErrorMsg("");
+    setTxHash(undefined);
     resetApprove();
     resetUnstake();
   }
@@ -143,7 +121,7 @@ export function InfinityUnstakeCard({ data }: { data: PrepareInfinityUnstakeResu
         {!isConnected ? (
           <div className="text-sm text-zinc-500 text-center py-2">Connect your wallet to unstake</div>
         ) : state === "success" ? (
-          <SuccessState message={`Unstaked! You received ${data.token}.`} txHash={unstakeTxHash} />
+          <SuccessState message={`Unstaked! You received ${data.token}.`} txHash={txHash} />
         ) : state === "error" ? (
           <ErrorState message={errorMsg} onRetry={handleRetry} />
         ) : (

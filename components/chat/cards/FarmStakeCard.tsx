@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useState } from "react";
+import { useAccount, useConfig, useWriteContract } from "wagmi";
+import { waitForTransactionReceipt } from "@wagmi/core";
 import { masterchefAbi, erc20Abi } from "@/config/abis";
 import type { PrepareFarmStakeResult } from "@/lib/ai/tool-types";
 import {
@@ -18,74 +19,51 @@ type FarmStakeState = "idle" | "approving" | "depositing" | "success" | "error" 
 
 export function FarmStakeCard({ data }: { data: PrepareFarmStakeResult }) {
   const { isConnected } = useAccount();
+  const config = useConfig();
   const [state, setState] = useState<FarmStakeState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [txHash, setTxHash] = useState<string>();
 
-  const {
-    writeContract: writeApprove,
-    data: approveTxHash,
-    error: approveError,
-    reset: resetApprove,
-  } = useWriteContract();
+  const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
+  const { writeContractAsync: writeDepositAsync, reset: resetDeposit } = useWriteContract();
 
-  const {
-    writeContract: writeDeposit,
-    data: depositTxHash,
-    error: depositError,
-    reset: resetDeposit,
-  } = useWriteContract();
-
-  const { isSuccess: approveConfirmed } = useWaitForTransactionReceipt({ hash: approveTxHash });
-  const { isSuccess: depositConfirmed } = useWaitForTransactionReceipt({ hash: depositTxHash });
-
-  useEffect(() => {
-    if (approveConfirmed && state === "approving") {
-      executeDeposit();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveConfirmed]);
-
-  useEffect(() => {
-    if (depositConfirmed && state === "depositing") {
-      setState("success");
-    }
-  }, [depositConfirmed, state]);
-
-  useEffect(() => {
-    if (approveError) { setState("error"); setErrorMsg(approveError.message.split("\n")[0]); }
-  }, [approveError]);
-  useEffect(() => {
-    if (depositError) { setState("error"); setErrorMsg(depositError.message.split("\n")[0]); }
-  }, [depositError]);
-
-  function executeDeposit() {
-    setState("depositing");
-    writeDeposit({
-      address: data.tx.masterChef as `0x${string}`,
-      abi: masterchefAbi,
-      functionName: "deposit",
-      args: [BigInt(data.tx.pid), BigInt(data.tx.rawAmount)],
-    });
-  }
-
-  function handleExecute() {
+  async function handleExecute() {
     setErrorMsg("");
-    if (data.needsApproval) {
-      setState("approving");
-      writeApprove({
-        address: data.tx.lpToken as `0x${string}`,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [data.tx.masterChef as `0x${string}`, BigInt(data.tx.rawAmount)],
+    try {
+      // Approve LP token if needed
+      if (data.needsApproval) {
+        setState("approving");
+        const approveHash = await writeApproveAsync({
+          address: data.tx.lpToken as `0x${string}`,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [data.tx.masterChef as `0x${string}`, BigInt(data.tx.rawAmount)],
+        });
+        await waitForTransactionReceipt(config, { hash: approveHash });
+      }
+
+      // Deposit
+      setState("depositing");
+      const hash = await writeDepositAsync({
+        address: data.tx.masterChef as `0x${string}`,
+        abi: masterchefAbi,
+        functionName: "deposit",
+        args: [BigInt(data.tx.pid), BigInt(data.tx.rawAmount)],
       });
-    } else {
-      executeDeposit();
+
+      setTxHash(hash);
+      await waitForTransactionReceipt(config, { hash });
+      setState("success");
+    } catch (err) {
+      setState("error");
+      setErrorMsg((err as Error).message.split("\n")[0]);
     }
   }
 
   function handleRetry() {
     setState("idle");
     setErrorMsg("");
+    setTxHash(undefined);
     resetApprove();
     resetDeposit();
   }
@@ -126,7 +104,7 @@ export function FarmStakeCard({ data }: { data: PrepareFarmStakeResult }) {
         {!isConnected ? (
           <div className="text-sm text-zinc-500 text-center py-2">Connect your wallet to stake</div>
         ) : state === "success" ? (
-          <SuccessState message="LP tokens staked!" txHash={depositTxHash} />
+          <SuccessState message="LP tokens staked!" txHash={txHash} />
         ) : state === "error" ? (
           <ErrorState message={errorMsg} onRetry={handleRetry} />
         ) : (

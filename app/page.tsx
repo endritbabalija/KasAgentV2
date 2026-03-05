@@ -3,11 +3,13 @@
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useInfinityPoolData } from "@/hooks/useInfinityPoolData";
 import { useSidebarState } from "@/hooks/useSidebarState";
+import { useReconnectOnFocus } from "@/hooks/useReconnectOnFocus";
 import { AppHeader } from "@/components/header/AppHeader";
 import { PortfolioSidebar } from "@/components/sidebar/PortfolioSidebar";
 import { ChatContainer } from "@/components/chat/ChatContainer";
 
 export default function Home() {
+  useReconnectOnFocus();
   const portfolio = usePortfolio();
   const { pools } = useInfinityPoolData();
   const { isOpen, toggle, close } = useSidebarState();

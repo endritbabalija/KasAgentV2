@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useState } from "react";
+import { useAccount, useConfig, useWriteContract } from "wagmi";
+import { waitForTransactionReceipt } from "@wagmi/core";
 import { erc20Abi, infinityPoolZealAbi, infinityPoolNachoAbi, infinityPoolKasperAbi } from "@/config/abis";
 import type { PrepareInfinityStakeResult } from "@/lib/ai/tool-types";
 import {
@@ -26,75 +27,52 @@ type InfinityStakeState = "idle" | "approving" | "staking" | "success" | "error"
 
 export function InfinityStakeCard({ data }: { data: PrepareInfinityStakeResult }) {
   const { isConnected } = useAccount();
+  const config = useConfig();
   const [state, setState] = useState<InfinityStakeState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [txHash, setTxHash] = useState<string>();
 
-  const {
-    writeContract: writeApprove,
-    data: approveTxHash,
-    error: approveError,
-    reset: resetApprove,
-  } = useWriteContract();
+  const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
+  const { writeContractAsync: writeStakeAsync, reset: resetStake } = useWriteContract();
 
-  const {
-    writeContract: writeStake,
-    data: stakeTxHash,
-    error: stakeError,
-    reset: resetStake,
-  } = useWriteContract();
-
-  const { isSuccess: approveConfirmed } = useWaitForTransactionReceipt({ hash: approveTxHash });
-  const { isSuccess: stakeConfirmed } = useWaitForTransactionReceipt({ hash: stakeTxHash });
-
-  useEffect(() => {
-    if (approveConfirmed && state === "approving") {
-      executeStake();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveConfirmed]);
-
-  useEffect(() => {
-    if (stakeConfirmed && state === "staking") {
-      setState("success");
-    }
-  }, [stakeConfirmed, state]);
-
-  useEffect(() => {
-    if (approveError) { setState("error"); setErrorMsg(approveError.message.split("\n")[0]); }
-  }, [approveError]);
-  useEffect(() => {
-    if (stakeError) { setState("error"); setErrorMsg(stakeError.message.split("\n")[0]); }
-  }, [stakeError]);
-
-  function executeStake() {
-    setState("staking");
-    const abi = poolAbis[data.token] ?? infinityPoolZealAbi;
-    writeStake({
-      address: data.tx.pool as `0x${string}`,
-      abi,
-      functionName: "stake",
-      args: [BigInt(data.tx.rawAmount)],
-    });
-  }
-
-  function handleExecute() {
+  async function handleExecute() {
     setErrorMsg("");
-    if (data.needsApproval) {
-      setState("approving");
-      writeApprove({
-        address: data.tx.tokenAddress as `0x${string}`,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [data.tx.pool as `0x${string}`, BigInt(data.tx.rawAmount)],
+    try {
+      // Approve token if needed
+      if (data.needsApproval) {
+        setState("approving");
+        const approveHash = await writeApproveAsync({
+          address: data.tx.tokenAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [data.tx.pool as `0x${string}`, BigInt(data.tx.rawAmount)],
+        });
+        await waitForTransactionReceipt(config, { hash: approveHash });
+      }
+
+      // Stake
+      setState("staking");
+      const abi = poolAbis[data.token] ?? infinityPoolZealAbi;
+      const hash = await writeStakeAsync({
+        address: data.tx.pool as `0x${string}`,
+        abi,
+        functionName: "stake",
+        args: [BigInt(data.tx.rawAmount)],
       });
-    } else {
-      executeStake();
+
+      setTxHash(hash);
+      await waitForTransactionReceipt(config, { hash });
+      setState("success");
+    } catch (err) {
+      setState("error");
+      setErrorMsg((err as Error).message.split("\n")[0]);
     }
   }
 
   function handleRetry() {
     setState("idle");
     setErrorMsg("");
+    setTxHash(undefined);
     resetApprove();
     resetStake();
   }
@@ -143,7 +121,7 @@ export function InfinityStakeCard({ data }: { data: PrepareInfinityStakeResult }
         {!isConnected ? (
           <div className="text-sm text-zinc-500 text-center py-2">Connect your wallet to stake</div>
         ) : state === "success" ? (
-          <SuccessState message={`${data.token} staked! You received x${data.token}.`} txHash={stakeTxHash} />
+          <SuccessState message={`${data.token} staked! You received x${data.token}.`} txHash={txHash} />
         ) : state === "error" ? (
           <ErrorState message={errorMsg} onRetry={handleRetry} />
         ) : (

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useState } from "react";
+import { useAccount, useConfig, useWriteContract } from "wagmi";
+import { waitForTransactionReceipt } from "@wagmi/core";
 import { routerAbi, erc20Abi } from "@/config/abis";
 import type { PrepareAddLiquidityResult } from "@/lib/ai/tool-types";
 import {
@@ -26,146 +27,93 @@ type AddLiquidityState =
 
 export function AddLiquidityCard({ data }: { data: PrepareAddLiquidityResult }) {
   const { address, isConnected } = useAccount();
+  const config = useConfig();
   const [state, setState] = useState<AddLiquidityState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [txHash, setTxHash] = useState<string>();
 
-  // Approve A
-  const {
-    writeContract: writeApproveA,
-    data: approveATxHash,
-    error: approveAError,
-    reset: resetApproveA,
-  } = useWriteContract();
+  const { writeContractAsync: writeApproveAAsync, reset: resetApproveA } = useWriteContract();
+  const { writeContractAsync: writeApproveBAsync, reset: resetApproveB } = useWriteContract();
+  const { writeContractAsync: writeAddAsync, reset: resetAdd } = useWriteContract();
 
-  // Approve B
-  const {
-    writeContract: writeApproveB,
-    data: approveBTxHash,
-    error: approveBError,
-    reset: resetApproveB,
-  } = useWriteContract();
+  async function handleExecute() {
+    setErrorMsg("");
+    try {
+      // Approve token A if needed
+      if (data.needsApprovalA) {
+        setState("approving-a");
+        const hashA = await writeApproveAAsync({
+          address: data.tx.tokenAAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [data.tx.router as `0x${string}`, BigInt(data.tx.rawAmountADesired)],
+        });
+        await waitForTransactionReceipt(config, { hash: hashA });
+      }
 
-  // Add liquidity
-  const {
-    writeContract: writeAdd,
-    data: addTxHash,
-    error: addError,
-    reset: resetAdd,
-  } = useWriteContract();
-
-  const { isSuccess: approveAConfirmed } = useWaitForTransactionReceipt({ hash: approveATxHash });
-  const { isSuccess: approveBConfirmed } = useWaitForTransactionReceipt({ hash: approveBTxHash });
-  const { isSuccess: addConfirmed } = useWaitForTransactionReceipt({ hash: addTxHash });
-
-  // Approve A confirmed → approve B or add
-  useEffect(() => {
-    if (approveAConfirmed && state === "approving-a") {
+      // Approve token B if needed
       if (data.needsApprovalB) {
         setState("approving-b");
-        writeApproveB({
+        const hashB = await writeApproveBAsync({
           address: data.tx.tokenBAddress as `0x${string}`,
           abi: erc20Abi,
           functionName: "approve",
           args: [data.tx.router as `0x${string}`, BigInt(data.tx.rawAmountBDesired)],
         });
-      } else {
-        executeAdd();
+        await waitForTransactionReceipt(config, { hash: hashB });
       }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveAConfirmed]);
 
-  // Approve B confirmed → add
-  useEffect(() => {
-    if (approveBConfirmed && state === "approving-b") {
-      executeAdd();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveBConfirmed]);
+      // Add liquidity
+      const { tx, liquidityType } = data;
+      const deadline = BigInt(tx.deadline);
+      setState("adding");
 
-  // Add confirmed
-  useEffect(() => {
-    if (addConfirmed && state === "adding") {
+      let hash: `0x${string}`;
+      if (liquidityType === "KAS_TOKEN") {
+        const isANative = data.tokenA.toUpperCase() === "KAS";
+        const tokenAddr = isANative ? tx.tokenBAddress : tx.tokenAAddress;
+        const amountTokenDesired = BigInt(isANative ? tx.rawAmountBDesired : tx.rawAmountADesired);
+        const amountTokenMin = BigInt(isANative ? tx.rawAmountBMin : tx.rawAmountAMin);
+        const amountKASMin = BigInt(isANative ? tx.rawAmountAMin : tx.rawAmountBMin);
+
+        hash = await writeAddAsync({
+          address: tx.router as `0x${string}`,
+          abi: routerAbi,
+          functionName: "addLiquidityKAS",
+          args: [tokenAddr as `0x${string}`, amountTokenDesired, amountTokenMin, amountKASMin, address!, deadline],
+          value: BigInt(tx.value),
+        });
+      } else {
+        hash = await writeAddAsync({
+          address: tx.router as `0x${string}`,
+          abi: routerAbi,
+          functionName: "addLiquidity",
+          args: [
+            tx.tokenAAddress as `0x${string}`,
+            tx.tokenBAddress as `0x${string}`,
+            BigInt(tx.rawAmountADesired),
+            BigInt(tx.rawAmountBDesired),
+            BigInt(tx.rawAmountAMin),
+            BigInt(tx.rawAmountBMin),
+            address!,
+            deadline,
+          ],
+        });
+      }
+
+      setTxHash(hash);
+      await waitForTransactionReceipt(config, { hash });
       setState("success");
-    }
-  }, [addConfirmed, state]);
-
-  // Errors
-  useEffect(() => {
-    if (approveAError) { setState("error"); setErrorMsg(approveAError.message.split("\n")[0]); }
-  }, [approveAError]);
-  useEffect(() => {
-    if (approveBError) { setState("error"); setErrorMsg(approveBError.message.split("\n")[0]); }
-  }, [approveBError]);
-  useEffect(() => {
-    if (addError) { setState("error"); setErrorMsg(addError.message.split("\n")[0]); }
-  }, [addError]);
-
-  function executeAdd() {
-    const { tx, liquidityType } = data;
-    const deadline = BigInt(tx.deadline);
-    setState("adding");
-
-    if (liquidityType === "KAS_TOKEN") {
-      // Determine which is the token side vs native
-      const isANative = data.tokenA.toUpperCase() === "KAS";
-      const tokenAddr = isANative ? tx.tokenBAddress : tx.tokenAAddress;
-      const amountTokenDesired = BigInt(isANative ? tx.rawAmountBDesired : tx.rawAmountADesired);
-      const amountTokenMin = BigInt(isANative ? tx.rawAmountBMin : tx.rawAmountAMin);
-      const amountKASMin = BigInt(isANative ? tx.rawAmountAMin : tx.rawAmountBMin);
-
-      writeAdd({
-        address: tx.router as `0x${string}`,
-        abi: routerAbi,
-        functionName: "addLiquidityKAS",
-        args: [tokenAddr as `0x${string}`, amountTokenDesired, amountTokenMin, amountKASMin, address!, deadline],
-        value: BigInt(tx.value),
-      });
-    } else {
-      writeAdd({
-        address: tx.router as `0x${string}`,
-        abi: routerAbi,
-        functionName: "addLiquidity",
-        args: [
-          tx.tokenAAddress as `0x${string}`,
-          tx.tokenBAddress as `0x${string}`,
-          BigInt(tx.rawAmountADesired),
-          BigInt(tx.rawAmountBDesired),
-          BigInt(tx.rawAmountAMin),
-          BigInt(tx.rawAmountBMin),
-          address!,
-          deadline,
-        ],
-      });
-    }
-  }
-
-  function handleExecute() {
-    setErrorMsg("");
-    if (data.needsApprovalA) {
-      setState("approving-a");
-      writeApproveA({
-        address: data.tx.tokenAAddress as `0x${string}`,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [data.tx.router as `0x${string}`, BigInt(data.tx.rawAmountADesired)],
-      });
-    } else if (data.needsApprovalB) {
-      setState("approving-b");
-      writeApproveB({
-        address: data.tx.tokenBAddress as `0x${string}`,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [data.tx.router as `0x${string}`, BigInt(data.tx.rawAmountBDesired)],
-      });
-    } else {
-      executeAdd();
+    } catch (err) {
+      setState("error");
+      setErrorMsg((err as Error).message.split("\n")[0]);
     }
   }
 
   function handleRetry() {
     setState("idle");
     setErrorMsg("");
+    setTxHash(undefined);
     resetApproveA();
     resetApproveB();
     resetAdd();
@@ -230,7 +178,7 @@ export function AddLiquidityCard({ data }: { data: PrepareAddLiquidityResult }) 
         {!isConnected ? (
           <div className="text-sm text-zinc-500 text-center py-2">Connect your wallet to add liquidity</div>
         ) : state === "success" ? (
-          <SuccessState message="Liquidity added!" txHash={addTxHash} />
+          <SuccessState message="Liquidity added!" txHash={txHash} />
         ) : state === "error" ? (
           <ErrorState message={errorMsg} onRetry={handleRetry} />
         ) : (

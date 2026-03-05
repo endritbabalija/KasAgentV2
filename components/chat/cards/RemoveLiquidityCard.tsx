@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useState } from "react";
+import { useAccount, useConfig, useWriteContract } from "wagmi";
+import { waitForTransactionReceipt } from "@wagmi/core";
 import { routerAbi, erc20Abi } from "@/config/abis";
 import type { PrepareRemoveLiquidityResult } from "@/lib/ai/tool-types";
 import {
@@ -19,99 +20,77 @@ type RemoveLiquidityState = "idle" | "approving" | "removing" | "success" | "err
 
 export function RemoveLiquidityCard({ data }: { data: PrepareRemoveLiquidityResult }) {
   const { address, isConnected } = useAccount();
+  const config = useConfig();
   const [state, setState] = useState<RemoveLiquidityState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [txHash, setTxHash] = useState<string>();
 
-  const {
-    writeContract: writeApprove,
-    data: approveTxHash,
-    error: approveError,
-    reset: resetApprove,
-  } = useWriteContract();
+  const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
+  const { writeContractAsync: writeRemoveAsync, reset: resetRemove } = useWriteContract();
 
-  const {
-    writeContract: writeRemove,
-    data: removeTxHash,
-    error: removeError,
-    reset: resetRemove,
-  } = useWriteContract();
-
-  const { isSuccess: approveConfirmed } = useWaitForTransactionReceipt({ hash: approveTxHash });
-  const { isSuccess: removeConfirmed } = useWaitForTransactionReceipt({ hash: removeTxHash });
-
-  useEffect(() => {
-    if (approveConfirmed && state === "approving") {
-      executeRemove();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveConfirmed]);
-
-  useEffect(() => {
-    if (removeConfirmed && state === "removing") {
-      setState("success");
-    }
-  }, [removeConfirmed, state]);
-
-  useEffect(() => {
-    if (approveError) { setState("error"); setErrorMsg(approveError.message.split("\n")[0]); }
-  }, [approveError]);
-  useEffect(() => {
-    if (removeError) { setState("error"); setErrorMsg(removeError.message.split("\n")[0]); }
-  }, [removeError]);
-
-  function executeRemove() {
-    const { tx, liquidityType } = data;
-    const deadline = BigInt(tx.deadline);
-    setState("removing");
-
-    if (liquidityType === "KAS_TOKEN") {
-      const isANative = data.tokenA.toUpperCase() === "KAS";
-      const tokenAddr = isANative ? tx.tokenBAddress : tx.tokenAAddress;
-      const amountTokenMin = BigInt(isANative ? tx.rawAmountBMin : tx.rawAmountAMin);
-      const amountKASMin = BigInt(isANative ? tx.rawAmountAMin : tx.rawAmountBMin);
-
-      writeRemove({
-        address: tx.router as `0x${string}`,
-        abi: routerAbi,
-        functionName: "removeLiquidityKAS",
-        args: [tokenAddr as `0x${string}`, BigInt(tx.rawLpAmount), amountTokenMin, amountKASMin, address!, deadline],
-      });
-    } else {
-      writeRemove({
-        address: tx.router as `0x${string}`,
-        abi: routerAbi,
-        functionName: "removeLiquidity",
-        args: [
-          tx.tokenAAddress as `0x${string}`,
-          tx.tokenBAddress as `0x${string}`,
-          BigInt(tx.rawLpAmount),
-          BigInt(tx.rawAmountAMin),
-          BigInt(tx.rawAmountBMin),
-          address!,
-          deadline,
-        ],
-      });
-    }
-  }
-
-  function handleExecute() {
+  async function handleExecute() {
     setErrorMsg("");
-    if (data.needsApproval) {
-      setState("approving");
-      writeApprove({
-        address: data.tx.pairAddress as `0x${string}`,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [data.tx.router as `0x${string}`, BigInt(data.tx.rawLpAmount)],
-      });
-    } else {
-      executeRemove();
+    try {
+      // Approve LP token if needed
+      if (data.needsApproval) {
+        setState("approving");
+        const approveHash = await writeApproveAsync({
+          address: data.tx.pairAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [data.tx.router as `0x${string}`, BigInt(data.tx.rawLpAmount)],
+        });
+        await waitForTransactionReceipt(config, { hash: approveHash });
+      }
+
+      // Remove liquidity
+      const { tx, liquidityType } = data;
+      const deadline = BigInt(tx.deadline);
+      setState("removing");
+
+      let hash: `0x${string}`;
+      if (liquidityType === "KAS_TOKEN") {
+        const isANative = data.tokenA.toUpperCase() === "KAS";
+        const tokenAddr = isANative ? tx.tokenBAddress : tx.tokenAAddress;
+        const amountTokenMin = BigInt(isANative ? tx.rawAmountBMin : tx.rawAmountAMin);
+        const amountKASMin = BigInt(isANative ? tx.rawAmountAMin : tx.rawAmountBMin);
+
+        hash = await writeRemoveAsync({
+          address: tx.router as `0x${string}`,
+          abi: routerAbi,
+          functionName: "removeLiquidityKAS",
+          args: [tokenAddr as `0x${string}`, BigInt(tx.rawLpAmount), amountTokenMin, amountKASMin, address!, deadline],
+        });
+      } else {
+        hash = await writeRemoveAsync({
+          address: tx.router as `0x${string}`,
+          abi: routerAbi,
+          functionName: "removeLiquidity",
+          args: [
+            tx.tokenAAddress as `0x${string}`,
+            tx.tokenBAddress as `0x${string}`,
+            BigInt(tx.rawLpAmount),
+            BigInt(tx.rawAmountAMin),
+            BigInt(tx.rawAmountBMin),
+            address!,
+            deadline,
+          ],
+        });
+      }
+
+      setTxHash(hash);
+      await waitForTransactionReceipt(config, { hash });
+      setState("success");
+    } catch (err) {
+      setState("error");
+      setErrorMsg((err as Error).message.split("\n")[0]);
     }
   }
 
   function handleRetry() {
     setState("idle");
     setErrorMsg("");
+    setTxHash(undefined);
     resetApprove();
     resetRemove();
   }
@@ -161,7 +140,7 @@ export function RemoveLiquidityCard({ data }: { data: PrepareRemoveLiquidityResu
         {!isConnected ? (
           <div className="text-sm text-zinc-500 text-center py-2">Connect your wallet to remove liquidity</div>
         ) : state === "success" ? (
-          <SuccessState message="Liquidity removed!" txHash={removeTxHash} />
+          <SuccessState message="Liquidity removed!" txHash={txHash} />
         ) : state === "error" ? (
           <ErrorState message={errorMsg} onRetry={handleRetry} />
         ) : (
