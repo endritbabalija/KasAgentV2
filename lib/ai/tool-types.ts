@@ -298,3 +298,36 @@ export interface YieldOpportunitiesResult {
   fetchedAt: string;
   error?: string;
 }
+
+// --- Transaction History types ---
+
+export interface TokenTransferInfo {
+  token: string;
+  from: string;
+  to: string;
+  amount: string;
+  decimals: number;
+}
+
+export interface TransactionHistoryItem {
+  hash: string;
+  action: string;
+  status: string;
+  from: string;
+  to: string;
+  toLabel: string | null;
+  value: string;
+  fee: string;
+  timestamp: string;
+  blockNumber: number;
+  tokenTransfers: TokenTransferInfo[];
+}
+
+export interface TransactionHistoryResult {
+  transactions: TransactionHistoryItem[];
+  address: string;
+  explorerUrl: string;
+  fetchedAt: string;
+  hasMore: boolean;
+  error?: string;
+}

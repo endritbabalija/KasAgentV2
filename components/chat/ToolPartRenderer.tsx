@@ -12,6 +12,7 @@ import { FarmStakeCard } from "./cards/FarmStakeCard";
 import { FarmUnstakeCard } from "./cards/FarmUnstakeCard";
 import { InfinityStakeCard } from "./cards/InfinityStakeCard";
 import { InfinityUnstakeCard } from "./cards/InfinityUnstakeCard";
+import { TransactionHistoryCard } from "./cards/TransactionHistoryCard";
 import type {
   SwapQuoteResult,
   PrepareSwapResult,
@@ -25,6 +26,7 @@ import type {
   PrepareFarmUnstakeResult,
   PrepareInfinityStakeResult,
   PrepareInfinityUnstakeResult,
+  TransactionHistoryResult,
 } from "@/lib/ai/tool-types";
 
 interface ToolPart {
@@ -84,6 +86,8 @@ export function ToolPartRenderer({ part }: { part: ToolPart }) {
       return <InfinityStakeCard data={output as unknown as PrepareInfinityStakeResult} />;
     case "prepareInfinityUnstake":
       return <InfinityUnstakeCard data={output as unknown as PrepareInfinityUnstakeResult} />;
+    case "getTransactionHistory":
+      return <TransactionHistoryCard data={output as unknown as TransactionHistoryResult} />;
     default:
       // Fallback: render raw JSON for unknown tools
       return (

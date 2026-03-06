@@ -67,6 +67,17 @@ export function getQuickActions(
           message: "Show me the top option in detail",
         },
       ];
+    case "getTransactionHistory":
+      return [
+        {
+          label: "Check portfolio",
+          message: "What's my current portfolio?",
+        },
+        {
+          label: "Find yield",
+          message: "What are the best yield opportunities?",
+        },
+      ];
     default:
       return [];
   }

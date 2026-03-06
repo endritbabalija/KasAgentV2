@@ -22,6 +22,7 @@ const BEHAVIOR_RULES = `
 - When the user wants to unstake from a farm, use \`prepareFarmUnstake\`. Pending rewards are auto-claimed.
 - When the user wants to stake in an InfinityPool (single-sided staking), use \`prepareInfinityStake\`.
 - When the user wants to unstake from an InfinityPool, use \`prepareInfinityUnstake\`.
+- When the user asks about their recent transactions, activity, past transactions, or transaction history, use \`getTransactionHistory\` with their wallet address.
 - For all transaction tools, always pass the user's wallet address from context.`;
 
 function buildProtocolKnowledge(): string {
@@ -130,6 +131,7 @@ const RESPONSE_GUIDELINES = `
 - **Liquidity operations**: Briefly explain impermanent loss. Show estimated pool share.
 - **Farm staking**: Mention the locking period. Note that deposit auto-claims pending rewards.
 - **InfinityPool staking**: Explain xToken mechanism — they receive xTokens that appreciate over time.
+- **Transaction history**: Summarize key patterns (most common actions, notable transfers). Highlight any failed transactions or large movements.
 - **Unknown**: If you don't have enough info, say so rather than guessing.`;
 
 export function buildSystemPrompt(

@@ -12,6 +12,7 @@ export function ToolCardSkeleton({ toolName }: { toolName: string }) {
     prepareFarmUnstake: "Preparing farm unstake...",
     prepareInfinityStake: "Preparing InfinityPool stake...",
     prepareInfinityUnstake: "Preparing InfinityPool unstake...",
+    getTransactionHistory: "Fetching transaction history...",
   };
 
   return (
