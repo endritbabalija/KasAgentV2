@@ -72,7 +72,7 @@ export function MessageList({
         <div className="flex justify-start">
           <div className="bg-red-950/50 border border-red-800/50 rounded-2xl px-4 py-3 max-w-[95%] sm:max-w-[85%]">
             <p className="text-sm text-red-400">
-              Something went wrong. Please try again.
+              {error.message || "Something went wrong. Please try again."}
             </p>
           </div>
         </div>

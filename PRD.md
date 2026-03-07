@@ -1,7 +1,7 @@
 # KasAgent — Product Requirements Document
 
 > **AI DeFi Copilot for Kasplex L2**
-> Version 1.1 · March 2026
+> Version 1.2 · March 2026
 
 ---
 
@@ -253,7 +253,7 @@ An AI response like *"Here's the quote: [tool result] As you can see..."* render
 - Cards use `bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4` — visually distinct from text bubbles
 - Data values use `font-mono text-teal-400` for emphasis
 - Token badges are color-coded: emerald (KAS), blue (ZEAL), orange (NACHO), purple (KASPER)
-- Token symbols reference the curated token list from `config/tokens.ts`
+- Token symbols are resolved dynamically from the on-chain token registry
 
 **Message Rendering:** `ChatMessage` iterates through `message.parts` in order:
 - `type === "text"` → renders via MarkdownRenderer (in its own bubble)
@@ -287,11 +287,12 @@ An AI response like *"Here's the quote: [tool result] As you can see..."* render
 | **Deadline** | Configurable transaction deadline (default: 20 minutes) |
 | **Token approval** | Auto-detect and prompt for ERC-20 `approve()` if allowance is insufficient |
 | **WKAS handling** | Automatic wrapping/unwrapping via WKAS (`0x2c2Ae87Ba178F48637acAe54B87c3924F544a83e`) when swapping native KAS |
+| **Multi-hop routing** | If no direct liquidity pair exists, the system automatically routes through WKAS as an intermediary (e.g., NACHO → WKAS → KASPER). Fee and gas estimates adjust for multi-hop paths. |
 
 **User Flow:**
 1. User says: "Swap 200 USDC to KAS"
-2. AI fetches quote via `getAmountsOut(amountIn, [USDC, WKAS], false)`
-3. AI displays: expected KAS output, price impact, DEX fee (0.3%), gas estimate
+2. AI fetches quote via `findBestPath()` — tries direct pair first, falls back to WKAS intermediary route
+3. AI displays: expected KAS output, price impact, DEX fee (0.3% per hop), gas estimate
 4. User clicks "Execute" or confirms in chat
 5. If approval needed: wallet prompts for token approval first
 6. Wallet prompts for swap transaction signature
@@ -646,7 +647,7 @@ app/page.tsx (layout orchestrator, owns portfolio hooks)
 ```
 lib/ai/tools/
 ├── index.ts       — re-exports aggregated aiTools object
-├── helpers.ts     — shared viem client, resolveTokenAddress, getTokenDecimals, calculatePriceImpact
+├── helpers.ts     — re-exports async token resolution from lib/token-registry, findBestPath (multi-hop routing), calculatePriceImpact, checkAllowance
 ├── swap.ts        — getSwapQuote, prepareSwap
 ├── liquidity.ts   — getPoolReserves, prepareAddLiquidity, prepareRemoveLiquidity
 ├── farms.ts       — getActiveFarms, prepareFarmStake, prepareFarmUnstake
@@ -659,7 +660,9 @@ Previously a single monolithic `lib/ai/tools.ts`. Split into per-domain modules 
 
 **Shared Utilities:**
 - `lib/ai/tool-types.ts` — TypeScript interfaces matching tool return shapes (all `*Result` types)
-- `lib/token-utils.ts` — Shared `getTokenSymbol(address)` function (deduplicated from portfolio and serializer code)
+- `lib/token-registry.ts` — Server-side dynamic token discovery from Factory pairs (5-min cache). Exports async `resolveTokenAddress()`, `addressToSymbol()`, `getTokenDecimals()`, `getAllTokens()`
+- `lib/viem-client.ts` — Single shared viem public client instance (used by both AI tools and token registry)
+- `hooks/useTokenRegistry.ts` — Client-side token discovery hook (reads Factory pairs + ERC-20 metadata via `useReadContracts`). Returns `tokens[]`, `tokenMap`, `getTokenSymbol()`
 - `lib/ai/quick-actions.ts` — Maps tool name + output to suggested follow-up actions
 
 ### AI Layer
@@ -904,24 +907,18 @@ The UI redesign is implemented incrementally, with each phase independently depl
 
 This section defines important implementation choices for the MVP in order to reduce ambiguity during development.
 
-### Token List Strategy
+### Token Discovery Strategy
 
-The system will use a curated internal token list for Kasplex L2.
+Tokens are discovered **dynamically from on-chain data** rather than maintained as a hardcoded list. The system reads all trading pairs from the ZealousSwap Factory contract and extracts unique token addresses, then batch-reads ERC-20 `name()`, `symbol()`, and `decimals()` for each.
 
-The list will follow the **Uniswap Token List JSON standard** and include metadata such as:
-- Token symbol
-- Contract address
-- Decimals
-- Logo URI
+**Two discovery layers:**
+- **Server-side** (`lib/token-registry.ts`): Used by AI tools and the system prompt. In-memory cache with 5-minute TTL. Always includes KAS (native) and WKAS.
+- **Client-side** (`hooks/useTokenRegistry.ts`): Used by UI components. Builds on the existing `useAllPairs` hook and wagmi's `useReadContracts` for ERC-20 metadata batch reads.
 
-The initial list will contain verified tokens in the Kasplex ecosystem, including:
-- KAS
-- ZEAL
-- NACHO
-- KASPER
-- Major stablecoins (if available)
+**What remains static:**
+- `config/tokens.ts` exports `KAS_NATIVE` (the native token constant) and `TOKEN_LOGOS` (a small address-to-logo-path map for known tokens). Logos are the only metadata that cannot come from on-chain.
 
-The token list will be stored in the project repository and updated manually as new verified tokens appear. Future versions may support community-submitted tokens with verification rules.
+This approach means any new token listed on ZealousSwap is automatically supported by KasAgent without code changes.
 
 ### ZealousSwap Discount Handling
 
@@ -1041,7 +1038,7 @@ The AI tool definitions were reorganized from a single monolithic `lib/ai/tools.
 
 | # | Question | Proposed Direction | Owner |
 |---|---|---|---|
-| 1 | **What token list should we use?** | Start with a **curated internal token list** for Kasplex L2 including verified tokens such as KAS, ZEAL, NACHO, KASPER, and major stablecoins. Use a JSON registry following the **Uniswap Token List standard** (symbol, decimals, logoURI, address). Store the list in the repository and update as new verified tokens appear. In later versions, support community-submitted tokens with verification rules. | Engineering |
+| 1 | **What token list should we use?** | **Resolved.** Tokens are discovered dynamically on-chain from ZealousSwap Factory pairs. Server-side: `lib/token-registry.ts` (5-min cache). Client-side: `hooks/useTokenRegistry.ts`. Only logo URIs remain static in `config/tokens.ts`. | Engineering |
 | 2 | **ZealousSwap discount eligibility** | The `isDiscountEligible` flag likely indicates whether the user qualifies for a **trading fee discount**, possibly based on holding or staking ZEAL tokens. For MVP, default to `false` unless the wallet holds ZEAL or documentation confirms the eligibility rule. Engineering should inspect the ZealousSwap contracts or documentation to confirm the exact condition. | Engineering |
 | 3 | **RPC rate limits** | For development, use the public RPC endpoint `https://evmrpc.kasplex.org`. For production, plan to use **multiple RPC endpoints or a dedicated node** to avoid rate limits and downtime. Implement an RPC provider abstraction with **automatic fallback and retry logic**. | Infrastructure |
 | 4 | **Token price feeds** | For MVP, derive prices from **DEX liquidity pools on ZealousSwap** using on-chain reserve ratios. Use pools paired with **USDC or another stablecoin** to estimate USD prices. Later phases may integrate external APIs such as CoinGecko or Dexscreener, or implement an on-chain oracle. | Engineering |

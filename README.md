@@ -33,13 +33,7 @@ Implemented areas in this codebase include:
   - yield discovery
   - transaction history
 
-Current supported token set in this repo:
-
-- `KAS`
-- `WKAS`
-- `ZEAL`
-- `NACHO`
-- `KASPER`
+Tokens are discovered dynamically on-chain from ZealousSwap Factory pairs — no hardcoded token list. The server-side registry (`lib/token-registry.ts`) caches discovered tokens for 5 minutes; the client-side hook (`hooks/useTokenRegistry.ts`) provides the same data to UI components. KAS (native) and WKAS are always included.
 
 Not in scope for this repo today:
 
@@ -135,12 +129,16 @@ components/
 config/
   chains.ts                Kasplex L2 chain definition
   contracts.ts             ZealousSwap contract addresses
-  tokens.ts                curated token metadata
+  tokens.ts                KAS_NATIVE constant, Token interface, TOKEN_LOGOS map
 hooks/
   usePortfolio.ts          aggregated wallet portfolio state
+  useTokenRegistry.ts      client-side dynamic token discovery from Factory pairs
   use*.ts                  on-chain data hooks
+lib/
+  token-registry.ts        server-side token discovery (5-min cache, used by AI tools)
+  viem-client.ts           shared viem public client instance
 lib/ai/
-  system-prompt.ts         model instructions and wallet context
+  system-prompt.ts         model instructions and wallet context (async, uses token registry)
   tools/                   AI tool modules by domain
 ```
 
@@ -150,12 +148,14 @@ The chat route in `app/api/chat/route.ts` streams responses from Anthropic and e
 
 Current tool domains:
 
-- `swap`
+- `swap` — multi-hop routing through WKAS when no direct pair exists
 - `liquidity`
 - `farms`
 - `staking`
 - `yield`
 - `history`
+
+Token resolution in AI tools is fully dynamic — symbols and decimals are looked up from the on-chain registry (`lib/token-registry.ts`) at execution time, so new tokens listed on ZealousSwap are automatically supported.
 
 The UI renders tool outputs as dedicated cards instead of flattening everything into plain text. That is a core product decision from the PRD.
 
