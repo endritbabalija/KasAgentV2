@@ -49,7 +49,7 @@ export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
     new DefaultChatTransport({
       api: "/api/chat",
       body: () => ({
-        walletAddress: portfolio.address ?? undefined,
+        walletAddress: portfolioRef.current?.address,
         portfolio: portfolioRef.current,
         infinityPools: poolsRef.current,
       }),

@@ -13,7 +13,8 @@
       "Bash(npx eslint:*)",
       "Bash(shopt:*)",
       "Bash(taskkill:*)",
-      "WebFetch(domain:zealousswap.com)"
+      "WebFetch(domain:zealousswap.com)",
+      "Bash(node:*)"
     ]
   }
 }

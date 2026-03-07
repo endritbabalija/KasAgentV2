@@ -3,9 +3,10 @@ import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
 import { getAllTokens } from "@/lib/token-registry";
+import { serverEnv } from "@/lib/env";
 import type { TransactionHistoryItem, TokenTransferInfo } from "../tool-types";
 
-const BLOCKSCOUT_API = "https://explorer.kasplex.org/node-api/proxy/api/v2";
+const BLOCKSCOUT_API = serverEnv.EXPLORER_API_URL;
 const EXPLORER_URL = "https://explorer.kasplex.org";
 
 // Method selector -> human-readable action label

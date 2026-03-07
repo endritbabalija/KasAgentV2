@@ -1,4 +1,5 @@
 import { defineChain } from "viem";
+import { clientEnv } from "@/lib/env";
 
 export const kasplexL2 = defineChain({
   id: 202555,
@@ -10,7 +11,7 @@ export const kasplexL2 = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ["https://evmrpc.kasplex.org"],
+      http: [clientEnv.NEXT_PUBLIC_RPC_URL],
     },
   },
   blockExplorers: {

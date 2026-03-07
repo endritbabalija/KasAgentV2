@@ -11,6 +11,7 @@ import type {
   SerializedPortfolio,
   SerializedInfinityPool,
 } from "@/lib/ai/serializers";
+import "@/lib/env"; // validate env vars at startup
 
 /* ------------------------------------------------------------------ */
 /*  In-memory rate limiter (per wallet, 30 req / 15 min)              */
@@ -97,9 +98,17 @@ export async function POST(req: Request) {
       messages: modelMessages,
       tools: aiTools,
       stopWhen: stepCountIs(5),
+      onError({ error }) {
+        console.error("[streamText error]", error);
+      },
     });
 
-    return result.toUIMessageStreamResponse();
+    return result.toUIMessageStreamResponse({
+      onError(error) {
+        console.error("[stream response error]", error);
+        return "Something went wrong. Please try again.";
+      },
+    });
   } catch (err: unknown) {
     console.error("[/api/chat] Unhandled error:", err);
 
