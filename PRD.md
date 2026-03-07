@@ -144,6 +144,18 @@ Extend the agent to additional Kaspa L2 ecosystems and beyond.
 - Cross-chain opportunity comparison
 - Unified multi-chain portfolio view
 
+### Architectural Direction
+
+**Current approach: Chain-First Vertical Slices (Direction 3)**, with Universal Interface (Direction 2) as the north star vision.
+
+The rule: *duplication is far cheaper than the wrong abstraction.* With only 1 chain and 1 protocol, building adapter interfaces or registries before a second concrete implementation would mean guessing at the right abstractions. Instead:
+
+1. **Now** — Build on Kasplex. Organize code into modular per-domain files (`lib/ai/tools/swap.ts`, `farms.ts`, etc.) but don't over-architect.
+2. **When Igra Labs drops** — Build a second vertical slice. Copy patterns from Kasplex, adapt them. The real shared vs. protocol-specific boundaries will become visible.
+3. **After 2+ chains work** — Extract common patterns into adapter interfaces. The abstractions write themselves from real examples.
+
+Chain-level capabilities (e.g., transaction history via Blockscout) are the one exception — parameterized by explorer URL now because every EVM L2 will have an identical explorer API.
+
 ---
 
 ## 6. Detailed Feature Specs (Phase 1 MVP)
@@ -613,17 +625,40 @@ app/page.tsx (layout orchestrator, owns portfolio hooks)
         ├── components/chat/ChatMessage.tsx (iterates message.parts → text or tool card)
         │   ├── MarkdownRenderer (text parts)
         │   └── components/chat/ToolPartRenderer.tsx (tool part dispatcher)
-        │       ├── components/chat/cards/SwapQuoteCard.tsx
-        │       ├── components/chat/cards/PoolReservesCard.tsx
-        │       ├── components/chat/cards/FarmsTableCard.tsx
-        │       ├── components/chat/cards/InfinityPoolRatesCard.tsx
-        │       ├── components/chat/cards/ToolCardSkeleton.tsx
-        │       └── components/chat/cards/ToolErrorCard.tsx
+        │       ├── cards/SwapQuoteCard.tsx
+        │       ├── cards/SwapExecutionCard.tsx
+        │       ├── cards/PoolReservesCard.tsx
+        │       ├── cards/FarmsTableCard.tsx
+        │       ├── cards/InfinityPoolRatesCard.tsx
+        │       ├── cards/YieldOpportunitiesCard.tsx
+        │       ├── cards/AddLiquidityCard.tsx
+        │       ├── cards/RemoveLiquidityCard.tsx
+        │       ├── cards/FarmStakeCard.tsx / FarmUnstakeCard.tsx
+        │       ├── cards/InfinityStakeCard.tsx / InfinityUnstakeCard.tsx
+        │       ├── cards/TransactionHistoryCard.tsx
+        │       ├── cards/ToolCardSkeleton.tsx
+        │       └── cards/ToolErrorCard.tsx
         └── components/chat/QuickActions.tsx (contextual follow-up buttons)
 ```
 
+**AI Tools (modular, per-domain):**
+
+```
+lib/ai/tools/
+├── index.ts       — re-exports aggregated aiTools object
+├── helpers.ts     — shared viem client, resolveTokenAddress, getTokenDecimals, calculatePriceImpact
+├── swap.ts        — getSwapQuote, prepareSwap
+├── liquidity.ts   — getPoolReserves, prepareAddLiquidity, prepareRemoveLiquidity
+├── farms.ts       — getActiveFarms, prepareFarmStake, prepareFarmUnstake
+├── staking.ts     — getInfinityPoolRates, prepareInfinityStake, prepareInfinityUnstake
+├── yield.ts       — discoverYieldOpportunities
+└── history.ts     — getTransactionHistory (Blockscout API, chain-level)
+```
+
+Previously a single monolithic `lib/ai/tools.ts`. Split into per-domain modules to improve navigability and prepare for multi-chain vertical slices (each chain will have its own tools directory).
+
 **Shared Utilities:**
-- `lib/ai/tool-types.ts` — TypeScript interfaces matching tool return shapes (`SwapQuoteResult`, `PoolReservesResult`, `ActiveFarmsResult`, `InfinityPoolRatesResult`)
+- `lib/ai/tool-types.ts` — TypeScript interfaces matching tool return shapes (all `*Result` types)
 - `lib/token-utils.ts` — Shared `getTokenSymbol(address)` function (deduplicated from portfolio and serializer code)
 - `lib/ai/quick-actions.ts` — Maps tool name + output to suggested follow-up actions
 
@@ -987,6 +1022,18 @@ Tracked events may include:
 - Transaction executed
 
 Wallet addresses will **not** be stored in analytics logs in order to protect user privacy.
+
+### Modular Tool Architecture
+
+The AI tool definitions were reorganized from a single monolithic `lib/ai/tools.ts` file into per-domain modules under `lib/ai/tools/`. Each file owns one functional domain (swap, liquidity, farms, staking, yield, history) with a shared `helpers.ts` for common utilities (viem client, token resolution).
+
+**Rationale:**
+- The monolithic file exceeded 800 lines and mixed unrelated domains
+- Per-domain modules improve navigability and reduce merge conflicts
+- Prepares for the Chain-First Vertical Slices architecture — when a second chain is added, each chain gets its own `tools/` directory with the same module structure
+- The `index.ts` barrel export keeps the import surface unchanged for consumers (`aiTools` object)
+
+**Convention:** Each tool module exports a `*Tools` object (e.g., `swapTools`, `farmTools`) that is spread into the aggregated `aiTools` in `index.ts`. Chain-level tools (e.g., `history.ts` using Blockscout REST API) are kept separate from protocol-level tools (e.g., `swap.ts` using viem/RPC) to make the chain vs. protocol boundary explicit.
 
 ---
 
