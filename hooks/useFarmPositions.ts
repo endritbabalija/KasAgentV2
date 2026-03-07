@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useAccount, useReadContracts } from "wagmi";
-import { useActiveFarms, type FarmGlobals } from "./useActiveFarms";
+import { useActiveFarms } from "./useActiveFarms";
 import { CONTRACTS } from "@/config/contracts";
 import { masterchefAbi } from "@/config/abis";
 

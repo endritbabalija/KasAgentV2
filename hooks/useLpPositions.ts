@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useAccount, useReadContracts } from "wagmi";
-import { useAllPairs, type PairInfo } from "./useAllPairs";
+import { useAllPairs } from "./useAllPairs";
 import { pairAbi } from "@/config/abis";
 
 export interface LpPosition {

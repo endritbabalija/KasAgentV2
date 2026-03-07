@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import type { Portfolio } from "@/hooks/usePortfolio";
@@ -73,50 +73,53 @@ export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
   const portfolioRef = useRef<SerializedPortfolio | null>(null);
   const poolsRef = useRef<SerializedInfinityPool[]>([]);
 
-  portfolioRef.current =
-    portfolio.isConnected && portfolio.address
-      ? serializePortfolio(
-          portfolio.address,
-          portfolio.balances,
-          portfolio.lpPositions,
-          portfolio.farmPositions,
-          portfolio.farmGlobals,
-          portfolio.stakingPositions,
-          getTokenSymbol
-        )
-      : null;
-
-  poolsRef.current = serializeInfinityPools(pools);
-
-  // Create transport once — body is a function that reads refs on each request
-  const transportRef = useRef(
-    new DefaultChatTransport({
-      api: "/api/chat",
-      body: () => ({
-        walletAddress: portfolioRef.current?.address,
-        portfolio: portfolioRef.current,
-        infinityPools: poolsRef.current,
-      }),
-    })
+  // Create transport once — body closure reads refs lazily on user action, not during render.
+  /* eslint-disable react-hooks/refs -- refs are captured in a callback, not read during render */
+  const [transport] = useState(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/chat",
+        body: () => ({
+          walletAddress: portfolioRef.current?.address,
+          portfolio: portfolioRef.current,
+          infinityPools: poolsRef.current,
+        }),
+      })
   );
+  /* eslint-enable react-hooks/refs */
 
-  // Load initial messages from localStorage (evaluated once via ref)
-  const initialMessagesRef = useRef(loadMessages(portfolio.address));
+  // Load initial messages from localStorage (evaluated once)
+  const [initialMessages] = useState(() => loadMessages(portfolio.address));
 
   const { messages, status, error, stop, sendMessage, setMessages } = useChat({
-    transport: transportRef.current,
-    messages: initialMessagesRef.current,
+    transport,
+    messages: initialMessages,
     onFinish: ({ messages: allMessages }) => {
       persistMessages(addressRef.current, allMessages);
     },
   });
 
-  // Keep addressRef fresh for the onFinish closure
-  addressRef.current = portfolio.address;
-
   // Track current messages in a ref for the wallet-switch effect
   const messagesRef = useRef(messages);
-  messagesRef.current = messages;
+
+  // Sync refs after each render for closures (transport body, onFinish, wallet-switch effect)
+  useEffect(() => {
+    portfolioRef.current =
+      portfolio.isConnected && portfolio.address
+        ? serializePortfolio(
+            portfolio.address,
+            portfolio.balances,
+            portfolio.lpPositions,
+            portfolio.farmPositions,
+            portfolio.farmGlobals,
+            portfolio.stakingPositions,
+            getTokenSymbol
+          )
+        : null;
+    poolsRef.current = serializeInfinityPools(pools);
+    addressRef.current = portfolio.address;
+    messagesRef.current = messages;
+  });
 
   // Handle wallet switch / disconnect
   useEffect(() => {
