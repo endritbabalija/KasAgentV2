@@ -1,4 +1,5 @@
 import type { TransactionHistoryResult, TransactionHistoryItem } from "@/lib/ai/tool-types";
+import { shortenAddress } from "./shared/ExecutionCardParts";
 
 const EXPLORER_URL = "https://explorer.kasplex.org";
 
@@ -28,11 +29,6 @@ function formatAmount(val: string): string {
   if (n >= 1_000_000) return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
   if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
   return n.toLocaleString("en-US", { maximumFractionDigits: 8 });
-}
-
-function shortenAddress(addr: string): string {
-  if (!addr || addr.length < 12) return addr;
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
 const actionBadgeColors: Record<string, string> = {

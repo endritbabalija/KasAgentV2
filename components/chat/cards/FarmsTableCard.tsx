@@ -1,12 +1,5 @@
 import type { ActiveFarmsResult } from "@/lib/ai/tool-types";
-
-function formatAmount(val: string): string {
-  const n = parseFloat(val);
-  if (isNaN(n)) return val;
-  if (n >= 1_000_000) return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  return n.toLocaleString("en-US", { maximumFractionDigits: 8 });
-}
+import { formatAmount } from "./shared/ExecutionCardParts";
 
 export function FarmsTableCard({ data }: { data: ActiveFarmsResult }) {
   const totalAlloc = parseInt(data.totalAllocPoint) || 1;

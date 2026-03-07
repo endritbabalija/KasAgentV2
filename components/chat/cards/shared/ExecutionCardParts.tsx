@@ -184,59 +184,6 @@ export function CancelledState({ label }: { label?: string }) {
   );
 }
 
-// ── Action Buttons ──
-
-export function ActionButtons({
-  isConnected,
-  isLoading,
-  loadingText,
-  buttonLabel,
-  onExecute,
-  onCancel,
-}: {
-  isConnected: boolean;
-  isLoading: boolean;
-  loadingText: string;
-  buttonLabel: string;
-  onExecute: () => void;
-  onCancel: () => void;
-}) {
-  if (!isConnected) {
-    return (
-      <div className="text-sm text-zinc-500 text-center py-2">
-        Connect your wallet to proceed
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex gap-2">
-      <button
-        onClick={onExecute}
-        disabled={isLoading}
-        className="flex-1 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium transition-colors cursor-pointer"
-      >
-        {isLoading ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="h-3.5 w-3.5 rounded-full border-2 border-zinc-500 border-t-white animate-spin" />
-            {loadingText}
-          </span>
-        ) : (
-          buttonLabel
-        )}
-      </button>
-      {!isLoading && (
-        <button
-          onClick={onCancel}
-          className="px-4 py-2.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-sm font-medium transition-colors cursor-pointer"
-        >
-          Cancel
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ── Detail Row ──
 
 export function DetailRow({ label, value, className }: { label: string; value: string; className?: string }) {

@@ -1,4 +1,5 @@
 import type { InfinityPoolRatesResult } from "@/lib/ai/tool-types";
+import { formatAmount } from "./shared/ExecutionCardParts";
 
 const poolColors: Record<string, string> = {
   ZEAL: "border-blue-800/50 bg-blue-950/20",
@@ -11,14 +12,6 @@ const nameColors: Record<string, string> = {
   NACHO: "text-orange-400",
   KASPER: "text-purple-400",
 };
-
-function formatAmount(val: string): string {
-  const n = parseFloat(val);
-  if (isNaN(n)) return val;
-  if (n >= 1_000_000) return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  return n.toLocaleString("en-US", { maximumFractionDigits: 8 });
-}
 
 export function InfinityPoolRatesCard({ data }: { data: InfinityPoolRatesResult }) {
   return (
