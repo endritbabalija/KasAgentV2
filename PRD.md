@@ -115,6 +115,7 @@ The core product: a chat-based AI assistant connected to the user's wallet on Ka
 - DeFi opportunity discovery (pools, farms, staking)
 - Transaction explanation before signing
 - Transaction building and wallet submission
+- Transaction history via Blockscout explorer API
 
 **UI Enhancements (within Phase 1):**
 - Portfolio sidebar with persistent wallet overview (Bloomberg Light)
@@ -471,6 +472,38 @@ Contextual follow-up suggestions that appear after AI responses containing tool 
 - Buttons disappear when the AI is processing a new request
 - Clicking a button sends the correct message and triggers an AI response
 - Actions are contextually relevant to the preceding tool result
+
+---
+
+### F9: Transaction History
+
+**Description:** Allow users to ask about their recent on-chain activity and see a labeled, enriched history of transactions. Powered by the Blockscout V2 API (chain-level capability, parameterized by explorer URL so it works on any EVM L2).
+
+| Aspect | Detail |
+|---|---|
+| **Data source** | Blockscout V2 API (`/addresses/{addr}/transactions` + `/addresses/{addr}/token-transfers`) |
+| **Scope** | 50 most recent transactions per request |
+| **Enrichment** | Method selector → human-readable action label (Swap, Add Liquidity, Farm Deposit, Stake, Transfer, Approve, etc.) |
+| **Contract labeling** | Known contract addresses (Router, MasterChef, InfinityPools) are labeled by name |
+| **Token transfers** | Grouped by transaction hash, showing +/- direction relative to user (green incoming, red outgoing) |
+| **Explorer links** | Each transaction links to `explorer.kasplex.org/tx/{hash}`, footer links to full address page |
+
+**Tool:** `getTransactionHistory(walletAddress)`
+
+**Card:** `TransactionHistoryCard` — table with columns: Action (colored badge + explorer link), Tokens (+/- amounts), Fee (KAS), Time (relative), Status (colored dot).
+
+**AI Behavior:**
+- Triggered when user asks about recent transactions, activity, or history
+- AI summarizes key patterns (most common actions, notable transfers, failed transactions)
+- Follow-up quick actions: "Check portfolio", "Find yield opportunities"
+
+**Acceptance Criteria:**
+- Skeleton shows "Fetching transaction history..." during loading
+- Card renders labeled actions, token movements, relative timestamps, and explorer links
+- "View all on Explorer" link opens correct address page
+- Empty state shows "No transactions found."
+- Error state renders via standard ToolErrorCard
+- With no wallet connected, Claude does not call the tool (no wallet address in context)
 
 ---
 
