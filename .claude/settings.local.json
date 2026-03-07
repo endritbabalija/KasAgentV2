@@ -10,7 +10,9 @@
       "Bash(git:*)",
       "Bash(ls:*)",
       "Bash(do echo:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(shopt:*)",
+      "Bash(taskkill:*)"
     ]
   }
 }
