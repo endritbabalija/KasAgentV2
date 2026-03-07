@@ -7,11 +7,13 @@ import { z } from "zod";
 const clientSchema = z.object({
   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: z.string().min(1, "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is required"),
   NEXT_PUBLIC_RPC_URL: z.string().url().default("https://evmrpc.kasplex.org"),
+  NEXT_PUBLIC_RPC_URL_FALLBACK: z.string().url().optional(),
 });
 
 export const clientEnv = clientSchema.parse({
   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
   NEXT_PUBLIC_RPC_URL: process.env.NEXT_PUBLIC_RPC_URL,
+  NEXT_PUBLIC_RPC_URL_FALLBACK: process.env.NEXT_PUBLIC_RPC_URL_FALLBACK || undefined,
 });
 
 /* ------------------------------------------------------------------ */
