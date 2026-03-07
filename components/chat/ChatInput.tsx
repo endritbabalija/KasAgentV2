@@ -72,7 +72,7 @@ export function ChatInput({
           }
           disabled={!isConnected}
           rows={1}
-          className="flex-1 bg-transparent px-2 py-1.5 text-zinc-100 placeholder-zinc-500 resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          className="flex-1 bg-transparent px-2 py-1.5 text-zinc-100 placeholder-zinc-500 resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed text-base"
         />
         {isLoading ? (
           <button
