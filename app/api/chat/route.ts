@@ -19,9 +19,6 @@ export async function POST(req: Request) {
   const portfolio: SerializedPortfolio | null = body.portfolio ?? null;
   const infinityPools: SerializedInfinityPool[] = body.infinityPools ?? [];
 
-  console.log("[chat] portfolio:", portfolio ? `${portfolio.balances.length} balances, addr=${portfolio.address}` : "null");
-  console.log("[chat] body keys:", Object.keys(body));
-
   const systemPrompt = buildSystemPrompt(portfolio, infinityPools);
 
   const modelMessages = await convertToModelMessages(messages);

@@ -42,7 +42,7 @@ export function usePortfolio(): Portfolio {
       lpPos.isLoading ||
       farmPos.isLoading ||
       stakingPos.isLoading,
-    isError: tokenBalances.isError || farmPos.isError,
+    isError: tokenBalances.isError || lpPos.isError || farmPos.isError || stakingPos.isError,
     balances: tokenBalances.balances,
     lpPositions: lpPos.positions,
     farmPositions: farmPos.positions,

@@ -45,7 +45,3 @@ export const KASPLEX_TOKENS: Token[] = [
     logoURI: "/tokens/kasper.png",
   },
 ];
-
-export const TOKEN_BY_SYMBOL = Object.fromEntries(
-  KASPLEX_TOKENS.map((t) => [t.symbol, t])
-) as Record<string, Token>;

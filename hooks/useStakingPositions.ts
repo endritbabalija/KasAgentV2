@@ -26,6 +26,7 @@ export function useStakingPositions() {
   const {
     data: xBalancesRaw,
     isLoading: balancesLoading,
+    isError: balancesError,
     refetch,
   } = useReadContracts({
     contracts: validPools.map((pool) => ({
@@ -59,6 +60,7 @@ export function useStakingPositions() {
   return {
     positions,
     isLoading: poolsLoading || balancesLoading,
+    isError: balancesError,
     refetch,
   };
 }
