@@ -2,13 +2,13 @@ import { formatUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
-import { KASPLEX_TOKENS } from "@/config/tokens";
+import { getAllTokens } from "@/lib/token-registry";
 import type { TransactionHistoryItem, TokenTransferInfo } from "../tool-types";
 
 const BLOCKSCOUT_API = "https://explorer.kasplex.org/node-api/proxy/api/v2";
 const EXPLORER_URL = "https://explorer.kasplex.org";
 
-// Method selector → human-readable action label
+// Method selector -> human-readable action label
 const METHOD_SELECTORS: Record<string, string> = {
   // Router
   "0x7ff36ab5": "Swap",
@@ -40,7 +40,7 @@ const METHOD_SELECTORS: Record<string, string> = {
   "0x23b872dd": "Transfer",
 };
 
-// Contract address → label
+// Contract address -> label
 const KNOWN_CONTRACTS: Record<string, string> = {
   [CONTRACTS.ROUTER.toLowerCase()]: "ZealousSwap Router",
   [CONTRACTS.FACTORY.toLowerCase()]: "ZealousSwap Factory",
@@ -50,12 +50,6 @@ const KNOWN_CONTRACTS: Record<string, string> = {
   [CONTRACTS.INFINITY_POOL_KASPER.toLowerCase()]: "KASPER InfinityPool",
   [CONTRACTS.WKAS.toLowerCase()]: "WKAS",
 };
-
-// Token address → symbol
-const TOKEN_ADDRESSES: Record<string, string> = {};
-for (const t of KASPLEX_TOKENS) {
-  if (t.address) TOKEN_ADDRESSES[t.address.toLowerCase()] = t.symbol;
-}
 
 export const historyTools = {
   getTransactionHistory: tool({
@@ -68,6 +62,13 @@ export const historyTools = {
     }),
     execute: async ({ walletAddress }) => {
       try {
+        // Build token address map dynamically from discovered tokens
+        const allTokens = await getAllTokens();
+        const tokenAddresses: Record<string, string> = {};
+        for (const t of allTokens) {
+          if (t.address) tokenAddresses[t.address.toLowerCase()] = t.symbol;
+        }
+
         const addr = walletAddress.toLowerCase();
 
         // Fetch transactions and token transfers in parallel
@@ -90,7 +91,7 @@ export const historyTools = {
         const txData = await txResponse.value.json();
         const txItems = txData.items ?? [];
 
-        // Token transfers (non-critical — proceed with empty if fails)
+        // Token transfers (non-critical)
         let tokenTransferItems: unknown[] = [];
         if (transfersResponse.status === "fulfilled" && transfersResponse.value.ok) {
           const transferData = await transfersResponse.value.json();
@@ -105,7 +106,7 @@ export const historyTools = {
 
           const token = tr.token as Record<string, unknown> | undefined;
           const tokenSymbol =
-            TOKEN_ADDRESSES[(token?.address as string)?.toLowerCase() ?? ""] ??
+            tokenAddresses[(token?.address as string)?.toLowerCase() ?? ""] ??
             (token?.symbol as string) ??
             "???";
           const decimals = Number(token?.decimals ?? 18);

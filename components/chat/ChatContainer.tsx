@@ -11,6 +11,7 @@ import {
   type SerializedPortfolio,
   type SerializedInfinityPool,
 } from "@/lib/ai/serializers";
+import { useTokenRegistry } from "@/hooks/useTokenRegistry";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { WelcomeScreen } from "./WelcomeScreen";
@@ -21,6 +22,8 @@ interface ChatContainerProps {
 }
 
 export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
+  const { getTokenSymbol } = useTokenRegistry();
+
   // Store latest serialized data in refs so the transport's body function
   // always reads fresh values without needing to recreate the transport.
   const portfolioRef = useRef<SerializedPortfolio | null>(null);
@@ -34,7 +37,8 @@ export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
           portfolio.lpPositions,
           portfolio.farmPositions,
           portfolio.farmGlobals,
-          portfolio.stakingPositions
+          portfolio.stakingPositions,
+          getTokenSymbol
         )
       : null;
 

@@ -5,7 +5,7 @@ import { ChevronRight, ChevronLeft, X } from "lucide-react";
 import type { Portfolio } from "@/hooks/usePortfolio";
 import type { InfinityPoolInfo } from "@/hooks/useInfinityPoolData";
 import { formatTokenAmount } from "@/lib/format";
-import { getTokenSymbol } from "@/lib/token-utils";
+import { useTokenRegistry } from "@/hooks/useTokenRegistry";
 
 interface PortfolioSidebarProps {
   portfolio: Portfolio;
@@ -22,6 +22,8 @@ export function PortfolioSidebar({
   onToggle,
   onClose,
 }: PortfolioSidebarProps) {
+  const { getTokenSymbol } = useTokenRegistry();
+
   // Lock body scroll when mobile drawer is open
   useEffect(() => {
     const isMobile = window.innerWidth < 768;

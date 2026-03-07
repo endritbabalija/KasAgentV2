@@ -3,14 +3,15 @@
 import { useReadContract } from "wagmi";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useInfinityPoolData } from "@/hooks/useInfinityPoolData";
+import { useTokenRegistry } from "@/hooks/useTokenRegistry";
 import { formatTokenAmount } from "@/lib/format";
-import { getTokenSymbol } from "@/lib/token-utils";
 import { CONTRACTS } from "@/config/contracts";
 import { factoryAbi, masterchefAbi } from "@/config/abis";
 
 export function PortfolioDashboard() {
   const portfolio = usePortfolio();
   const { pools: infinityPools } = useInfinityPoolData();
+  const { getTokenSymbol } = useTokenRegistry();
 
   const { data: pairCountRaw } = useReadContract({
     address: CONTRACTS.FACTORY,

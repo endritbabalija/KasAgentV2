@@ -5,7 +5,6 @@ import type { FarmPosition } from "@/hooks/useFarmPositions";
 import type { StakingPosition } from "@/hooks/useStakingPositions";
 import type { FarmGlobals } from "@/hooks/useActiveFarms";
 import type { InfinityPoolInfo } from "@/hooks/useInfinityPoolData";
-import { getTokenSymbol } from "@/lib/token-utils";
 
 function fmt(value: bigint, decimals: number = 18): string {
   return formatUnits(value, decimals);
@@ -45,8 +44,11 @@ export function serializePortfolio(
   lpPositions: LpPosition[],
   farmPositions: FarmPosition[],
   farmGlobals: FarmGlobals,
-  stakingPositions: StakingPosition[]
+  stakingPositions: StakingPosition[],
+  symbolResolver?: (address: string) => string
 ): SerializedPortfolio {
+  const resolve = symbolResolver ?? ((addr: string) => addr.slice(0, 10));
+
   return {
     address,
     balances: balances
@@ -58,7 +60,7 @@ export function serializePortfolio(
     lpPositions: lpPositions
       .filter((lp) => lp.lpBalance > 0n)
       .map((lp) => ({
-        pair: `${getTokenSymbol(lp.token0)}/${getTokenSymbol(lp.token1)}`,
+        pair: `${resolve(lp.token0)}/${resolve(lp.token1)}`,
         lpBalance: fmt(lp.lpBalance),
         token0Amount: fmt(lp.token0Amount),
         token1Amount: fmt(lp.token1Amount),
@@ -74,7 +76,7 @@ export function serializePortfolio(
     farmGlobals: {
       rewardPerBlock: fmt(farmGlobals.rewardPerBlock),
       totalAllocPoint: farmGlobals.totalAllocPoint.toString(),
-      rewardToken: getTokenSymbol(farmGlobals.rewardToken),
+      rewardToken: resolve(farmGlobals.rewardToken),
     },
     stakingPositions: stakingPositions
       .filter((sp) => sp.xTokenBalance > 0n)

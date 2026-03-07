@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   const portfolio: SerializedPortfolio | null = body.portfolio ?? null;
   const infinityPools: SerializedInfinityPool[] = body.infinityPools ?? [];
 
-  const systemPrompt = buildSystemPrompt(portfolio, infinityPools);
+  const systemPrompt = await buildSystemPrompt(portfolio, infinityPools);
 
   const modelMessages = await convertToModelMessages(messages);
 

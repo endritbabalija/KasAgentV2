@@ -1,28 +1,48 @@
-import { createPublicClient, http, formatEther } from "viem";
-import { kasplexL2 } from "@/config/chains";
+import { formatEther } from "viem";
 import { CONTRACTS } from "@/config/contracts";
-import { KASPLEX_TOKENS } from "@/config/tokens";
-import { factoryAbi, pairAbi, erc20Abi } from "@/config/abis";
+import { factoryAbi, pairAbi, erc20Abi, routerAbi } from "@/config/abis";
+import {
+  resolveTokenAddress,
+  getTokenDecimals,
+  addressToSymbol,
+} from "@/lib/token-registry";
+import { client } from "@/lib/viem-client";
 
-export const client = createPublicClient({
-  chain: kasplexL2,
-  transport: http(),
-});
+export { client };
 
-export function resolveTokenAddress(symbol: string): `0x${string}` | null {
-  const token = KASPLEX_TOKENS.find(
-    (t) => t.symbol.toUpperCase() === symbol.toUpperCase()
-  );
-  if (!token) return null;
-  if (token.isNative) return CONTRACTS.WKAS;
-  return token.address;
-}
+export { resolveTokenAddress, getTokenDecimals, addressToSymbol };
 
-export function getTokenDecimals(symbol: string): number {
-  const token = KASPLEX_TOKENS.find(
-    (t) => t.symbol.toUpperCase() === symbol.toUpperCase()
-  );
-  return token?.decimals ?? 18;
+export async function findBestPath(
+  addressIn: `0x${string}`,
+  addressOut: `0x${string}`,
+  rawAmountIn: bigint
+): Promise<{ path: `0x${string}`[]; amounts: bigint[] }> {
+  // Try direct path first
+  try {
+    const amounts = (await client.readContract({
+      address: CONTRACTS.ROUTER,
+      abi: routerAbi,
+      functionName: "getAmountsOut",
+      args: [rawAmountIn, [addressIn, addressOut], false],
+    })) as bigint[];
+    return { path: [addressIn, addressOut], amounts };
+  } catch {
+    // Direct path failed — try routing through WKAS
+  }
+
+  const wkas = CONTRACTS.WKAS;
+  // Skip WKAS hop if either token IS WKAS
+  if (addressIn.toLowerCase() === wkas.toLowerCase() || addressOut.toLowerCase() === wkas.toLowerCase()) {
+    throw new Error("No liquidity path found for this pair");
+  }
+
+  const amounts = (await client.readContract({
+    address: CONTRACTS.ROUTER,
+    abi: routerAbi,
+    functionName: "getAmountsOut",
+    args: [rawAmountIn, [addressIn, wkas, addressOut], false],
+  })) as bigint[];
+  return { path: [addressIn, wkas, addressOut], amounts };
 }
 
 export async function calculatePriceImpact(
@@ -64,11 +84,8 @@ export async function calculatePriceImpact(
 
     if (reserveIn === 0n || reserveOut === 0n) return "0";
 
-    // spot price = reserveOut / reserveIn (scaled by 1e18 for precision)
     const spotPrice = (reserveOut * BigInt(1e18)) / reserveIn;
-    // execution price = amountOut / amountIn (scaled by 1e18)
     const executionPrice = (rawAmountOut * BigInt(1e18)) / rawAmountIn;
-    // price impact = 1 - executionPrice / spotPrice
     const impact =
       spotPrice > 0n
         ? Number(((spotPrice - executionPrice) * 10000n) / spotPrice) / 100
@@ -110,8 +127,4 @@ export async function checkAllowance(
     needsApproval: allowance < requiredAmount,
     currentAllowance: allowance.toString(),
   };
-}
-
-export function addressToSymbol(addr: string): string {
-  return KASPLEX_TOKENS.find(t => t.address?.toLowerCase() === addr.toLowerCase())?.symbol ?? "???";
 }

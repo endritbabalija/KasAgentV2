@@ -1,6 +1,6 @@
 import type { SerializedPortfolio, SerializedInfinityPool } from "./serializers";
 import { CONTRACTS } from "@/config/contracts";
-import { KASPLEX_TOKENS } from "@/config/tokens";
+import { getAllTokens } from "@/lib/token-registry";
 
 const IDENTITY = `You are KasAgent, an AI DeFi copilot for the Kasplex L2 network. You help users understand their portfolio, find yield opportunities, and navigate the ZealousSwap DEX ecosystem. You are non-custodial — the user must approve all transactions in their own wallet.`;
 
@@ -25,8 +25,9 @@ const BEHAVIOR_RULES = `
 - When the user asks about their recent transactions, activity, past transactions, or transaction history, use \`getTransactionHistory\` with their wallet address.
 - For all transaction tools, always pass the user's wallet address from context.`;
 
-function buildProtocolKnowledge(): string {
-  const tokens = KASPLEX_TOKENS.map(
+async function buildProtocolKnowledge(): Promise<string> {
+  const allTokens = await getAllTokens();
+  const tokens = allTokens.map(
     (t) => `- **${t.symbol}** (${t.name}): ${t.address ?? "native"}, ${t.decimals} decimals`
   ).join("\n");
 
@@ -134,14 +135,14 @@ const RESPONSE_GUIDELINES = `
 - **Transaction history**: Summarize key patterns (most common actions, notable transfers). Highlight any failed transactions or large movements.
 - **Unknown**: If you don't have enough info, say so rather than guessing.`;
 
-export function buildSystemPrompt(
+export async function buildSystemPrompt(
   portfolio: SerializedPortfolio | null,
   infinityPools: SerializedInfinityPool[]
-): string {
+): Promise<string> {
   return [
     IDENTITY,
     BEHAVIOR_RULES,
-    buildProtocolKnowledge(),
+    await buildProtocolKnowledge(),
     buildWalletContext(portfolio, infinityPools),
     RESPONSE_GUIDELINES,
   ].join("\n");

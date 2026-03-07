@@ -2,7 +2,6 @@ import { formatUnits, parseUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
-import { KASPLEX_TOKENS } from "@/config/tokens";
 import {
   masterchefAbi,
   pairAbi,
@@ -53,12 +52,7 @@ export const farmTools = {
           )
         );
 
-        const rewardTokenSymbol =
-          KASPLEX_TOKENS.find(
-            (t) =>
-              t.address?.toLowerCase() ===
-              (rewardToken as string).toLowerCase()
-          )?.symbol ?? (rewardToken as string);
+        const rewardTokenSymbol = await addressToSymbol(rewardToken as string);
 
         const farms = poolIds.map((pid, i) => {
           const info = poolInfos[i] as readonly [
@@ -108,7 +102,6 @@ export const farmTools = {
         const rawAmount = parseUnits(amount, 18);
         const bigPid = BigInt(pid);
 
-        // Read pool info
         const poolInfo = (await client.readContract({
           address: CONTRACTS.MASTER_CHEF,
           abi: masterchefAbi,
@@ -122,15 +115,12 @@ export const farmTools = {
           return { error: `Farm pool ${pid} is not active` };
         }
 
-        // Get locking period, reward token
         const [lockingPeriod, rewardToken] = await Promise.all([
           client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "lockingPeriod" }),
           client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardToken" }),
         ]);
 
-        const rewardTokenSymbol = KASPLEX_TOKENS.find(
-          t => t.address?.toLowerCase() === (rewardToken as string).toLowerCase()
-        )?.symbol ?? "ZEAL";
+        const rewardTokenSymbol = await addressToSymbol(rewardToken as string);
 
         // Get pair symbols for LP token label
         let lpTokenSymbol = "LP";
@@ -139,7 +129,11 @@ export const farmTools = {
             client.readContract({ address: lpToken, abi: pairAbi, functionName: "token0" }),
             client.readContract({ address: lpToken, abi: pairAbi, functionName: "token1" }),
           ]);
-          lpTokenSymbol = `${addressToSymbol(t0 as string)}/${addressToSymbol(t1 as string)} LP`;
+          const [s0, s1] = await Promise.all([
+            addressToSymbol(t0 as string),
+            addressToSymbol(t1 as string),
+          ]);
+          lpTokenSymbol = `${s0}/${s1} LP`;
         } catch { /* keep fallback */ }
 
         // User info + pending rewards
@@ -258,9 +252,7 @@ export const farmTools = {
           return { error: `You have no staked LP tokens in farm pool ${pid}` };
         }
 
-        const rewardTokenSymbol = KASPLEX_TOKENS.find(
-          t => t.address?.toLowerCase() === (rewardToken as string).toLowerCase()
-        )?.symbol ?? "ZEAL";
+        const rewardTokenSymbol = await addressToSymbol(rewardToken as string);
 
         // LP label
         let lpTokenSymbol = "LP";
@@ -269,7 +261,11 @@ export const farmTools = {
             client.readContract({ address: lpToken, abi: pairAbi, functionName: "token0" }),
             client.readContract({ address: lpToken, abi: pairAbi, functionName: "token1" }),
           ]);
-          lpTokenSymbol = `${addressToSymbol(t0 as string)}/${addressToSymbol(t1 as string)} LP`;
+          const [s0, s1] = await Promise.all([
+            addressToSymbol(t0 as string),
+            addressToSymbol(t1 as string),
+          ]);
+          lpTokenSymbol = `${s0}/${s1} LP`;
         } catch { /* keep fallback */ }
 
         const rawAmount = amount ? parseUnits(amount, 18) : userStaked;

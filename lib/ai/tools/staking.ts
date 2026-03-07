@@ -121,12 +121,12 @@ export const stakingTools = {
         return { error: `Unsupported InfinityPool token: ${token}. Supported: ZEAL, NACHO, KASPER` };
       }
 
-      const tokenAddress = resolveTokenAddress(sym);
+      const tokenAddress = await resolveTokenAddress(sym);
       if (!tokenAddress) {
         return { error: `Unknown token: ${token}` };
       }
 
-      const decimals = getTokenDecimals(sym);
+      const decimals = await getTokenDecimals(sym);
       const rawAmount = parseUnits(amount, decimals);
 
       try {
@@ -217,7 +217,7 @@ export const stakingTools = {
         return { error: `Unsupported InfinityPool token: ${token}. Supported: ZEAL, NACHO, KASPER` };
       }
 
-      const decimals = getTokenDecimals(sym);
+      const decimals = await getTokenDecimals(sym);
       const rawXAmount = parseUnits(amount, decimals);
 
       try {

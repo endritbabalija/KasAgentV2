@@ -2,7 +2,6 @@ import { formatUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
-import { KASPLEX_TOKENS } from "@/config/tokens";
 import {
   factoryAbi,
   pairAbi,
@@ -17,6 +16,7 @@ import type {
   RiskLevel,
 } from "../tool-types";
 import { client } from "./helpers";
+import { getAllTokens, addressToSymbol } from "@/lib/token-registry";
 
 const BLOCK_TIME_SECONDS = 2;
 const BLOCKS_PER_YEAR = (365.25 * 24 * 3600) / BLOCK_TIME_SECONDS;
@@ -138,13 +138,15 @@ async function fetchOnChainData(): Promise<[PairData[], FarmData, InfinityData]>
 }
 
 // ===== Derive token prices from pair reserves =====
-function derivePrices(pairs: PairData[]) {
+async function derivePrices(pairs: PairData[]) {
   const wkasAddr = CONTRACTS.WKAS.toLowerCase();
   const tokenPrices: Record<string, number> = { [wkasAddr]: 1 };
 
-  const addrToSymbol: Record<string, string> = {};
-  for (const t of KASPLEX_TOKENS) {
-    if (t.address) addrToSymbol[t.address.toLowerCase()] = t.symbol;
+  // Build address-to-symbol map from discovered tokens
+  const allTokens = await getAllTokens();
+  const addrToSym: Record<string, string> = {};
+  for (const t of allTokens) {
+    if (t.address) addrToSym[t.address.toLowerCase()] = t.symbol;
   }
 
   // First pass: pairs with WKAS on one side
@@ -173,27 +175,25 @@ function derivePrices(pairs: PairData[]) {
 
   const tokenPricesInKas: Record<string, number> = { KAS: 1 };
   for (const [addr, price] of Object.entries(tokenPrices)) {
-    const sym = addrToSymbol[addr];
+    const sym = addrToSym[addr];
     if (sym) tokenPricesInKas[sym] = price;
   }
 
-  return { tokenPrices, tokenPricesInKas, addrToSymbol };
+  return { tokenPrices, tokenPricesInKas, addrToSymbol: addrToSym };
 }
 
 // ===== Build opportunities array =====
-function buildOpportunities(
+async function buildOpportunities(
   pairs: PairData[],
   farmData: FarmData,
   infinityData: InfinityData,
   tokenPrices: Record<string, number>,
-  addrToSymbol: Record<string, string>,
-): YieldOpportunity[] {
+  addrToSym: Record<string, string>,
+): Promise<YieldOpportunity[]> {
   const opportunities: YieldOpportunity[] = [];
 
-  const rewardTokenSymbol =
-    KASPLEX_TOKENS.find((t) => t.address?.toLowerCase() === farmData.rewardToken)?.symbol ?? "ZEAL";
+  const rewardTokenSymbol = await addressToSymbol(farmData.rewardToken);
   const rewardTokenPrice = tokenPrices[farmData.rewardToken] ?? 0;
-  const knownAddresses = new Set(KASPLEX_TOKENS.filter((t) => t.address).map((t) => t.address!.toLowerCase()));
 
   // --- Farms ---
   for (let i = 0; i < farmData.poolIds.length; i++) {
@@ -208,8 +208,8 @@ function buildOpportunities(
     const pairData = pairs.find((p) => p.address.toLowerCase() === lpToken);
     if (!pairData) continue;
 
-    const token0Sym = addrToSymbol[pairData.token0] ?? pairData.token0.slice(0, 8);
-    const token1Sym = addrToSymbol[pairData.token1] ?? pairData.token1.slice(0, 8);
+    const token0Sym = addrToSym[pairData.token0] ?? pairData.token0.slice(0, 8);
+    const token1Sym = addrToSym[pairData.token1] ?? pairData.token1.slice(0, 8);
     const price0 = tokenPrices[pairData.token0] ?? 0;
     const price1 = tokenPrices[pairData.token1] ?? 0;
 
@@ -230,12 +230,6 @@ function buildOpportunities(
     ];
     if (tvlKas < 1000) {
       risks.push({ type: "low_liquidity", label: "Low liquidity (TVL < 1,000 KAS)", severity: "high" as RiskLevel });
-    }
-    if (!knownAddresses.has(pairData.token0)) {
-      risks.push({ type: "unverified_token", label: `Unverified token ${token0Sym}`, severity: "high" as RiskLevel });
-    }
-    if (!knownAddresses.has(pairData.token1)) {
-      risks.push({ type: "unverified_token", label: `Unverified token ${token1Sym}`, severity: "high" as RiskLevel });
     }
 
     opportunities.push({
@@ -264,8 +258,11 @@ function buildOpportunities(
 
   // --- InfinityPool: ZEAL (emission-based) ---
   {
+    const allTokens = await getAllTokens();
+    const zealToken = allTokens.find((t) => t.symbol === "ZEAL");
+    const zealAddr = zealToken?.address?.toLowerCase();
     const totalStaked = Number(formatUnits(infinityData.zeal.totalStaked, 18));
-    const zealPrice = tokenPrices[KASPLEX_TOKENS.find((t) => t.symbol === "ZEAL")!.address!.toLowerCase()] ?? 0;
+    const zealPrice = zealAddr ? (tokenPrices[zealAddr] ?? 0) : 0;
     const tvlKas = totalStaked * zealPrice;
     const zealPerBlockNum = Number(formatUnits(infinityData.zeal.zealPerBlock, 18));
     const apyPercent = totalStaked > 0 ? (zealPerBlockNum * BLOCKS_PER_YEAR / totalStaked) * 100 : 0;
@@ -299,37 +296,42 @@ function buildOpportunities(
   }
 
   // --- Fee-based InfinityPools (NACHO, KASPER) ---
-  const feeBasedPools = [
-    { id: "infinity-nacho", token: "NACHO", data: infinityData.nacho },
-    { id: "infinity-kasper", token: "KASPER", data: infinityData.kasper },
-  ] as const;
+  {
+    const allTokens = await getAllTokens();
+    const feeBasedPools = [
+      { id: "infinity-nacho", tokenSymbol: "NACHO", data: infinityData.nacho },
+      { id: "infinity-kasper", tokenSymbol: "KASPER", data: infinityData.kasper },
+    ] as const;
 
-  for (const pool of feeBasedPools) {
-    const totalStaked = Number(formatUnits(pool.data.totalStaked, 18));
-    const price = tokenPrices[KASPLEX_TOKENS.find((t) => t.symbol === pool.token)!.address!.toLowerCase()] ?? 0;
-    const tvlKas = totalStaked * price;
+    for (const pool of feeBasedPools) {
+      const tokenDef = allTokens.find((t) => t.symbol === pool.tokenSymbol);
+      const tokenAddr = tokenDef?.address?.toLowerCase();
+      const totalStaked = Number(formatUnits(pool.data.totalStaked, 18));
+      const price = tokenAddr ? (tokenPrices[tokenAddr] ?? 0) : 0;
+      const tvlKas = totalStaked * price;
 
-    const risks: RiskFlag[] = [];
-    if (tvlKas < 1000) {
-      risks.push({ type: "low_liquidity", label: "Low liquidity (TVL < 1,000 KAS)", severity: "high" as RiskLevel });
+      const risks: RiskFlag[] = [];
+      if (tvlKas < 1000) {
+        risks.push({ type: "low_liquidity", label: "Low liquidity (TVL < 1,000 KAS)", severity: "high" as RiskLevel });
+      }
+
+      opportunities.push({
+        id: pool.id,
+        type: "infinity_pool",
+        name: `${pool.tokenSymbol} InfinityPool`,
+        tokens: [pool.tokenSymbol],
+        apyPercent: null,
+        yieldSource: "Fee-based (exchange rate appreciation)",
+        tvlKas,
+        risks,
+        overallRisk: resolveOverallRisk(risks),
+        details: {
+          token: pool.tokenSymbol,
+          exchangeRate: formatUnits(pool.data.exchangeRate, 18),
+          totalStaked: formatUnits(pool.data.totalStaked, 18),
+        },
+      });
     }
-
-    opportunities.push({
-      id: pool.id,
-      type: "infinity_pool",
-      name: `${pool.token} InfinityPool`,
-      tokens: [pool.token],
-      apyPercent: null,
-      yieldSource: "Fee-based (exchange rate appreciation)",
-      tvlKas,
-      risks,
-      overallRisk: resolveOverallRisk(risks),
-      details: {
-        token: pool.token,
-        exchangeRate: formatUnits(pool.data.exchangeRate, 18),
-        totalStaked: formatUnits(pool.data.totalStaked, 18),
-      },
-    });
   }
 
   return opportunities;
@@ -366,8 +368,8 @@ export const yieldTools = {
     execute: async ({ filterToken }) => {
       try {
         const [pairs, farmData, infinityData] = await fetchOnChainData();
-        const { tokenPrices, tokenPricesInKas, addrToSymbol } = derivePrices(pairs);
-        const opportunities = buildOpportunities(pairs, farmData, infinityData, tokenPrices, addrToSymbol);
+        const { tokenPrices, tokenPricesInKas, addrToSymbol: addrToSym } = await derivePrices(pairs);
+        const opportunities = await buildOpportunities(pairs, farmData, infinityData, tokenPrices, addrToSym);
         const filtered = rankAndFilter(opportunities, filterToken);
 
         return {

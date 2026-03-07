@@ -12,7 +12,8 @@
       "Bash(do echo:*)",
       "Bash(npx eslint:*)",
       "Bash(shopt:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "WebFetch(domain:zealousswap.com)"
     ]
   }
 }

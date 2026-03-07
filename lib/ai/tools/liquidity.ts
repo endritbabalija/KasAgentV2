@@ -2,7 +2,6 @@ import { formatUnits, parseUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
-import { KASPLEX_TOKENS } from "@/config/tokens";
 import {
   factoryAbi,
   pairAbi,
@@ -20,14 +19,14 @@ import {
 export const liquidityTools = {
   getPoolReserves: tool({
     description:
-      "Get the current reserves and liquidity for a trading pair on ZealousSwap. Supported tokens: KAS, WKAS, ZEAL, NACHO, KASPER.",
+      "Get the current reserves and liquidity for a trading pair on ZealousSwap.",
     inputSchema: z.object({
       tokenA: z.string().describe("Symbol of the first token"),
       tokenB: z.string().describe("Symbol of the second token"),
     }),
     execute: async ({ tokenA, tokenB }) => {
-      const addressA = resolveTokenAddress(tokenA);
-      const addressB = resolveTokenAddress(tokenB);
+      const addressA = await resolveTokenAddress(tokenA);
+      const addressB = await resolveTokenAddress(tokenB);
       if (!addressA || !addressB) {
         return { error: `Unknown token: ${!addressA ? tokenA : tokenB}` };
       }
@@ -67,6 +66,9 @@ export const liquidityTools = {
         const isToken0A =
           (token0 as string).toLowerCase() === addressA.toLowerCase();
 
+        const decimalsA = await getTokenDecimals(tokenA);
+        const decimalsB = await getTokenDecimals(tokenB);
+
         return {
           pair: `${tokenA}/${tokenB}`,
           pairAddress,
@@ -74,13 +76,13 @@ export const liquidityTools = {
             isToken0A
               ? (reserves as [bigint, bigint, number])[0]
               : (reserves as [bigint, bigint, number])[1],
-            getTokenDecimals(tokenA)
+            decimalsA
           ),
           reserveB: formatUnits(
             isToken0A
               ? (reserves as [bigint, bigint, number])[1]
               : (reserves as [bigint, bigint, number])[0],
-            getTokenDecimals(tokenB)
+            decimalsB
           ),
           totalLpSupply: formatUnits(totalSupply as bigint, 18),
         };
@@ -94,7 +96,7 @@ export const liquidityTools = {
 
   prepareAddLiquidity: tool({
     description:
-      "Prepare an add-liquidity transaction for a ZealousSwap pair. Calculates optimal amounts, checks allowances, and returns tx params. Supported tokens: KAS, WKAS, ZEAL, NACHO, KASPER.",
+      "Prepare an add-liquidity transaction for a ZealousSwap pair. Calculates optimal amounts, checks allowances, and returns tx params.",
     inputSchema: z.object({
       tokenA: z.string().describe("Symbol of the first token (e.g. KAS, ZEAL)"),
       tokenB: z.string().describe("Symbol of the second token (e.g. NACHO, KASPER)"),
@@ -104,17 +106,17 @@ export const liquidityTools = {
       walletAddress: z.string().optional().describe("User wallet address for allowance check"),
     }),
     execute: async ({ tokenA, tokenB, amountA, amountB, slippage, walletAddress }) => {
-      const addressA = resolveTokenAddress(tokenA);
-      const addressB = resolveTokenAddress(tokenB);
+      const addressA = await resolveTokenAddress(tokenA);
+      const addressB = await resolveTokenAddress(tokenB);
       if (!addressA || !addressB) {
-        return { error: `Unknown token: ${!addressA ? tokenA : tokenB}. Supported: KAS, WKAS, ZEAL, NACHO, KASPER` };
+        return { error: `Unknown token: ${!addressA ? tokenA : tokenB}` };
       }
       if (addressA === addressB) {
         return { error: "Tokens must be different" };
       }
 
-      const decimalsA = getTokenDecimals(tokenA);
-      const decimalsB = getTokenDecimals(tokenB);
+      const decimalsA = await getTokenDecimals(tokenA);
+      const decimalsB = await getTokenDecimals(tokenB);
       const isNativeA = tokenA.toUpperCase() === "KAS";
       const isNativeB = tokenB.toUpperCase() === "KAS";
       const liquidityType: "KAS_TOKEN" | "TOKEN_TOKEN" = isNativeA || isNativeB ? "KAS_TOKEN" : "TOKEN_TOKEN";
@@ -136,7 +138,6 @@ export const liquidityTools = {
         let poolShare = "0";
 
         if (isNewPair) {
-          // New pair: both amounts required
           if (!amountB) {
             return { error: "Both token amounts are required when creating a new pair" };
           }
@@ -145,7 +146,6 @@ export const liquidityTools = {
           estimatedLpTokens = "first deposit";
           poolShare = "100";
         } else {
-          // Existing pair: calculate optimal B from reserves
           const [reserves, token0, totalSupply] = await Promise.all([
             client.readContract({ address: pairAddress, abi: pairAbi, functionName: "getReserves" }),
             client.readContract({ address: pairAddress, abi: pairAbi, functionName: "token0" }),
@@ -162,12 +162,10 @@ export const liquidityTools = {
             rawAmountB = parseUnits(amountB, decimalsB);
             computedAmountB = amountB;
           } else {
-            // Calculate optimal amountB: amountA * reserveB / reserveA
             rawAmountB = reserveA > 0n ? (rawAmountA * reserveB) / reserveA : 0n;
             computedAmountB = formatUnits(rawAmountB, decimalsB);
           }
 
-          // Estimate LP tokens: min(amountA * totalSupply / reserveA, amountB * totalSupply / reserveB)
           if (lpTotalSupply > 0n && reserveA > 0n && reserveB > 0n) {
             const lpFromA = (rawAmountA * lpTotalSupply) / reserveA;
             const lpFromB = (rawAmountB * lpTotalSupply) / reserveB;
@@ -189,27 +187,21 @@ export const liquidityTools = {
         let currentAllowanceB = "0";
 
         if (walletAddress) {
-          if (!isNativeA) {
-            const tokenAddr = KASPLEX_TOKENS.find(t => t.symbol.toUpperCase() === tokenA.toUpperCase())?.address;
-            if (tokenAddr) {
-              ({ needsApproval: needsApprovalA, currentAllowance: currentAllowanceA } = await checkAllowance(
-                tokenAddr,
-                walletAddress as `0x${string}`,
-                CONTRACTS.ROUTER,
-                rawAmountA
-              ));
-            }
+          if (!isNativeA && addressA) {
+            ({ needsApproval: needsApprovalA, currentAllowance: currentAllowanceA } = await checkAllowance(
+              addressA,
+              walletAddress as `0x${string}`,
+              CONTRACTS.ROUTER,
+              rawAmountA
+            ));
           }
-          if (!isNativeB) {
-            const tokenAddr = KASPLEX_TOKENS.find(t => t.symbol.toUpperCase() === tokenB.toUpperCase())?.address;
-            if (tokenAddr) {
-              ({ needsApproval: needsApprovalB, currentAllowance: currentAllowanceB } = await checkAllowance(
-                tokenAddr,
-                walletAddress as `0x${string}`,
-                CONTRACTS.ROUTER,
-                rawAmountB
-              ));
-            }
+          if (!isNativeB && addressB) {
+            ({ needsApproval: needsApprovalB, currentAllowance: currentAllowanceB } = await checkAllowance(
+              addressB,
+              walletAddress as `0x${string}`,
+              CONTRACTS.ROUTER,
+              rawAmountB
+            ));
           }
         }
 
@@ -224,7 +216,6 @@ export const liquidityTools = {
           riskFlags.push({ type: "new_pair", label: "Creating a new liquidity pair", severity: "medium" as RiskLevel });
         }
         if (!isNewPair) {
-          // Check for unbalanced deposit
           try {
             const pairReserves = (await client.readContract({ address: pairAddress, abi: pairAbi, functionName: "getReserves" })) as [bigint, bigint, number];
             const token0 = (await client.readContract({ address: pairAddress, abi: pairAbi, functionName: "token0" })) as string;
@@ -254,7 +245,6 @@ export const liquidityTools = {
           description: `Add liquidity to ${tokenA}/${tokenB} pool via ZealousSwap Router`,
         };
 
-        // For KAS_TOKEN, native side goes as value
         let txValue = "0";
         if (isNativeA) txValue = rawAmountA.toString();
         else if (isNativeB) txValue = rawAmountB.toString();
@@ -297,7 +287,7 @@ export const liquidityTools = {
 
   prepareRemoveLiquidity: tool({
     description:
-      "Prepare a remove-liquidity transaction for a ZealousSwap pair. Calculates expected token outputs. Supported tokens: KAS, WKAS, ZEAL, NACHO, KASPER.",
+      "Prepare a remove-liquidity transaction for a ZealousSwap pair. Calculates expected token outputs.",
     inputSchema: z.object({
       tokenA: z.string().describe("Symbol of the first token"),
       tokenB: z.string().describe("Symbol of the second token"),
@@ -306,14 +296,14 @@ export const liquidityTools = {
       walletAddress: z.string().optional().describe("User wallet address"),
     }),
     execute: async ({ tokenA, tokenB, percentage, slippage, walletAddress }) => {
-      const addressA = resolveTokenAddress(tokenA);
-      const addressB = resolveTokenAddress(tokenB);
+      const addressA = await resolveTokenAddress(tokenA);
+      const addressB = await resolveTokenAddress(tokenB);
       if (!addressA || !addressB) {
-        return { error: `Unknown token: ${!addressA ? tokenA : tokenB}. Supported: KAS, WKAS, ZEAL, NACHO, KASPER` };
+        return { error: `Unknown token: ${!addressA ? tokenA : tokenB}` };
       }
 
-      const decimalsA = getTokenDecimals(tokenA);
-      const decimalsB = getTokenDecimals(tokenB);
+      const decimalsA = await getTokenDecimals(tokenA);
+      const decimalsB = await getTokenDecimals(tokenB);
       const isNativeA = tokenA.toUpperCase() === "KAS";
       const isNativeB = tokenB.toUpperCase() === "KAS";
       const liquidityType: "KAS_TOKEN" | "TOKEN_TOKEN" = isNativeA || isNativeB ? "KAS_TOKEN" : "TOKEN_TOKEN";
@@ -355,7 +345,6 @@ export const liquidityTools = {
         const reserveA = isToken0A ? r0 : r1;
         const reserveB = isToken0A ? r1 : r0;
 
-        // Expected amounts: lpToRemove * reserve / totalSupply
         const expectedA = (lpToRemove * reserveA) / lpTotal;
         const expectedB = (lpToRemove * reserveB) / lpTotal;
 
@@ -363,7 +352,6 @@ export const liquidityTools = {
         const rawAmountBMin = calculateMinAmount(expectedB, slippage);
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
 
-        // Check LP token allowance to router
         const { needsApproval, currentAllowance } = await checkAllowance(
           pairAddress,
           walletAddress as `0x${string}`,
