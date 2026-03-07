@@ -1,4 +1,4 @@
-import { formatUnits, parseUnits, formatEther } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
@@ -6,10 +6,16 @@ import { KASPLEX_TOKENS } from "@/config/tokens";
 import {
   factoryAbi,
   pairAbi,
-  erc20Abi,
 } from "@/config/abis";
 import type { RiskFlag, RiskLevel, ContractInfo } from "../tool-types";
-import { client, resolveTokenAddress, getTokenDecimals } from "./helpers";
+import {
+  client,
+  resolveTokenAddress,
+  getTokenDecimals,
+  estimateGasCost,
+  calculateMinAmount,
+  checkAllowance,
+} from "./helpers";
 
 export const liquidityTools = {
   getPoolReserves: tool({
@@ -172,9 +178,8 @@ export const liquidityTools = {
           }
         }
 
-        const slippageBps = BigInt(Math.round(slippage * 100));
-        const rawAmountAMin = rawAmountA - (rawAmountA * slippageBps) / 10000n;
-        const rawAmountBMin = rawAmountB - (rawAmountB * slippageBps) / 10000n;
+        const rawAmountAMin = calculateMinAmount(rawAmountA, slippage);
+        const rawAmountBMin = calculateMinAmount(rawAmountB, slippage);
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
 
         // Check allowances
@@ -187,37 +192,29 @@ export const liquidityTools = {
           if (!isNativeA) {
             const tokenAddr = KASPLEX_TOKENS.find(t => t.symbol.toUpperCase() === tokenA.toUpperCase())?.address;
             if (tokenAddr) {
-              const allowance = (await client.readContract({
-                address: tokenAddr,
-                abi: erc20Abi,
-                functionName: "allowance",
-                args: [walletAddress as `0x${string}`, CONTRACTS.ROUTER],
-              })) as bigint;
-              currentAllowanceA = allowance.toString();
-              needsApprovalA = allowance < rawAmountA;
+              ({ needsApproval: needsApprovalA, currentAllowance: currentAllowanceA } = await checkAllowance(
+                tokenAddr,
+                walletAddress as `0x${string}`,
+                CONTRACTS.ROUTER,
+                rawAmountA
+              ));
             }
           }
           if (!isNativeB) {
             const tokenAddr = KASPLEX_TOKENS.find(t => t.symbol.toUpperCase() === tokenB.toUpperCase())?.address;
             if (tokenAddr) {
-              const allowance = (await client.readContract({
-                address: tokenAddr,
-                abi: erc20Abi,
-                functionName: "allowance",
-                args: [walletAddress as `0x${string}`, CONTRACTS.ROUTER],
-              })) as bigint;
-              currentAllowanceB = allowance.toString();
-              needsApprovalB = allowance < rawAmountB;
+              ({ needsApproval: needsApprovalB, currentAllowance: currentAllowanceB } = await checkAllowance(
+                tokenAddr,
+                walletAddress as `0x${string}`,
+                CONTRACTS.ROUTER,
+                rawAmountB
+              ));
             }
           }
         }
 
         // Gas estimate
-        let gasEstimate = "0.03";
-        try {
-          const gasPrice = await client.getGasPrice();
-          gasEstimate = formatEther(200000n * gasPrice);
-        } catch { /* keep fallback */ }
+        const gasEstimate = await estimateGasCost(200000n, "0.03");
 
         // Risk flags
         const riskFlags: RiskFlag[] = [
@@ -362,28 +359,19 @@ export const liquidityTools = {
         const expectedA = (lpToRemove * reserveA) / lpTotal;
         const expectedB = (lpToRemove * reserveB) / lpTotal;
 
-        const slippageBps = BigInt(Math.round(slippage * 100));
-        const rawAmountAMin = expectedA - (expectedA * slippageBps) / 10000n;
-        const rawAmountBMin = expectedB - (expectedB * slippageBps) / 10000n;
+        const rawAmountAMin = calculateMinAmount(expectedA, slippage);
+        const rawAmountBMin = calculateMinAmount(expectedB, slippage);
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
 
         // Check LP token allowance to router
-        let needsApproval = false;
-        let currentAllowance = "0";
-        const lpAllowance = (await client.readContract({
-          address: pairAddress,
-          abi: erc20Abi,
-          functionName: "allowance",
-          args: [walletAddress as `0x${string}`, CONTRACTS.ROUTER],
-        })) as bigint;
-        currentAllowance = lpAllowance.toString();
-        needsApproval = lpAllowance < lpToRemove;
+        const { needsApproval, currentAllowance } = await checkAllowance(
+          pairAddress,
+          walletAddress as `0x${string}`,
+          CONTRACTS.ROUTER,
+          lpToRemove
+        );
 
-        let gasEstimate = "0.025";
-        try {
-          const gasPrice = await client.getGasPrice();
-          gasEstimate = formatEther(180000n * gasPrice);
-        } catch { /* keep fallback */ }
+        const gasEstimate = await estimateGasCost(180000n, "0.025");
 
         const riskFlags: RiskFlag[] = [];
         const resA = Number(formatUnits(reserveA, decimalsA));

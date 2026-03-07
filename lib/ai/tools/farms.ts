@@ -1,4 +1,4 @@
-import { formatUnits, parseUnits, formatEther } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
@@ -6,10 +6,9 @@ import { KASPLEX_TOKENS } from "@/config/tokens";
 import {
   masterchefAbi,
   pairAbi,
-  erc20Abi,
 } from "@/config/abis";
 import type { RiskFlag, RiskLevel } from "../tool-types";
-import { client } from "./helpers";
+import { client, estimateGasCost, checkAllowance, addressToSymbol } from "./helpers";
 
 export const farmTools = {
   getActiveFarms: tool({
@@ -140,8 +139,7 @@ export const farmTools = {
             client.readContract({ address: lpToken, abi: pairAbi, functionName: "token0" }),
             client.readContract({ address: lpToken, abi: pairAbi, functionName: "token1" }),
           ]);
-          const addrToSym = (addr: string) => KASPLEX_TOKENS.find(t => t.address?.toLowerCase() === addr.toLowerCase())?.symbol ?? "???";
-          lpTokenSymbol = `${addrToSym(t0 as string)}/${addrToSym(t1 as string)} LP`;
+          lpTokenSymbol = `${addressToSymbol(t0 as string)}/${addressToSymbol(t1 as string)} LP`;
         } catch { /* keep fallback */ }
 
         // User info + pending rewards
@@ -171,21 +169,15 @@ export const farmTools = {
         let needsApproval = false;
         let currentAllowance = "0";
         if (walletAddress) {
-          const allowance = (await client.readContract({
-            address: lpToken,
-            abi: erc20Abi,
-            functionName: "allowance",
-            args: [walletAddress as `0x${string}`, CONTRACTS.MASTER_CHEF],
-          })) as bigint;
-          currentAllowance = allowance.toString();
-          needsApproval = allowance < rawAmount;
+          ({ needsApproval, currentAllowance } = await checkAllowance(
+            lpToken,
+            walletAddress as `0x${string}`,
+            CONTRACTS.MASTER_CHEF,
+            rawAmount
+          ));
         }
 
-        let gasEstimate = "0.02";
-        try {
-          const gasPrice = await client.getGasPrice();
-          gasEstimate = formatEther(150000n * gasPrice);
-        } catch { /* keep fallback */ }
+        const gasEstimate = await estimateGasCost(150000n, "0.02");
 
         const lockingSeconds = Number(lockingPeriod as bigint);
         const lockingHours = (lockingSeconds / 3600).toFixed(1);
@@ -277,8 +269,7 @@ export const farmTools = {
             client.readContract({ address: lpToken, abi: pairAbi, functionName: "token0" }),
             client.readContract({ address: lpToken, abi: pairAbi, functionName: "token1" }),
           ]);
-          const addrToSym = (addr: string) => KASPLEX_TOKENS.find(t => t.address?.toLowerCase() === addr.toLowerCase())?.symbol ?? "???";
-          lpTokenSymbol = `${addrToSym(t0 as string)}/${addrToSym(t1 as string)} LP`;
+          lpTokenSymbol = `${addressToSymbol(t0 as string)}/${addressToSymbol(t1 as string)} LP`;
         } catch { /* keep fallback */ }
 
         const rawAmount = amount ? parseUnits(amount, 18) : userStaked;
@@ -291,11 +282,7 @@ export const farmTools = {
           return { error: `Cannot withdraw yet — locking period (${(lockSec / 3600).toFixed(1)} hours) has not elapsed since last deposit` };
         }
 
-        let gasEstimate = "0.015";
-        try {
-          const gasPrice = await client.getGasPrice();
-          gasEstimate = formatEther(120000n * gasPrice);
-        } catch { /* keep fallback */ }
+        const gasEstimate = await estimateGasCost(120000n, "0.015");
 
         const riskFlags: RiskFlag[] = [];
         if (parseFloat(pendingRewards) > 0) {

@@ -1,8 +1,7 @@
-import { formatUnits, parseUnits, formatEther } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
-import { KASPLEX_TOKENS } from "@/config/tokens";
 import {
   infinityPoolZealAbi,
   infinityPoolNachoAbi,
@@ -10,7 +9,7 @@ import {
   erc20Abi,
 } from "@/config/abis";
 import type { RiskFlag, RiskLevel } from "../tool-types";
-import { client, resolveTokenAddress, getTokenDecimals } from "./helpers";
+import { client, resolveTokenAddress, getTokenDecimals, estimateGasCost, checkAllowance } from "./helpers";
 
 export const stakingTools = {
   getInfinityPoolRates: tool({
@@ -145,21 +144,15 @@ export const stakingTools = {
         let needsApproval = false;
         let currentAllowance = "0";
         if (walletAddress) {
-          const allowance = (await client.readContract({
-            address: tokenAddress,
-            abi: erc20Abi,
-            functionName: "allowance",
-            args: [walletAddress as `0x${string}`, pool.address],
-          })) as bigint;
-          currentAllowance = allowance.toString();
-          needsApproval = allowance < rawAmount;
+          ({ needsApproval, currentAllowance } = await checkAllowance(
+            tokenAddress,
+            walletAddress as `0x${string}`,
+            pool.address,
+            rawAmount
+          ));
         }
 
-        let gasEstimate = "0.015";
-        try {
-          const gasPrice = await client.getGasPrice();
-          gasEstimate = formatEther(120000n * gasPrice);
-        } catch { /* keep fallback */ }
+        const gasEstimate = await estimateGasCost(120000n, "0.015");
 
         const riskFlags: RiskFlag[] = [];
         if (sym === "ZEAL") {
@@ -262,21 +255,15 @@ export const stakingTools = {
         let needsApproval = false;
         let currentAllowance = "0";
         if (walletAddress) {
-          const allowance = (await client.readContract({
-            address: xTokenAddress,
-            abi: erc20Abi,
-            functionName: "allowance",
-            args: [walletAddress as `0x${string}`, pool.address],
-          })) as bigint;
-          currentAllowance = allowance.toString();
-          needsApproval = allowance < rawXAmount;
+          ({ needsApproval, currentAllowance } = await checkAllowance(
+            xTokenAddress,
+            walletAddress as `0x${string}`,
+            pool.address,
+            rawXAmount
+          ));
         }
 
-        let gasEstimate = "0.015";
-        try {
-          const gasPrice = await client.getGasPrice();
-          gasEstimate = formatEther(120000n * gasPrice);
-        } catch { /* keep fallback */ }
+        const gasEstimate = await estimateGasCost(120000n, "0.015");
 
         const riskFlags: RiskFlag[] = [];
 

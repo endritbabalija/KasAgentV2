@@ -1,4 +1,4 @@
-import { formatUnits, parseUnits, formatEther } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
@@ -7,7 +7,6 @@ import {
   routerAbi,
   factoryAbi,
   pairAbi,
-  erc20Abi,
 } from "@/config/abis";
 import type { RiskFlag, ContractInfo } from "../tool-types";
 import {
@@ -15,6 +14,9 @@ import {
   resolveTokenAddress,
   getTokenDecimals,
   calculatePriceImpact,
+  estimateGasCost,
+  calculateMinAmount,
+  checkAllowance,
 } from "./helpers";
 
 export const swapTools = {
@@ -125,9 +127,7 @@ export const swapTools = {
         })) as bigint[];
 
         const rawAmountOut = amounts[amounts.length - 1];
-        const slippageBps = BigInt(Math.round(slippage * 100));
-        const rawAmountOutMin =
-          rawAmountOut - (rawAmountOut * slippageBps) / 10000n;
+        const rawAmountOutMin = calculateMinAmount(rawAmountOut, slippage);
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
 
         // Check allowance for ERC-20 inputs
@@ -138,17 +138,12 @@ export const swapTools = {
             (t) => t.symbol.toUpperCase() === tokenIn.toUpperCase()
           )?.address;
           if (tokenAddress) {
-            const allowance = (await client.readContract({
-              address: tokenAddress,
-              abi: erc20Abi,
-              functionName: "allowance",
-              args: [
-                walletAddress as `0x${string}`,
-                CONTRACTS.ROUTER,
-              ],
-            })) as bigint;
-            currentAllowance = allowance.toString();
-            needsApproval = allowance < rawAmountIn;
+            ({ needsApproval, currentAllowance } = await checkAllowance(
+              tokenAddress,
+              walletAddress as `0x${string}`,
+              CONTRACTS.ROUTER,
+              rawAmountIn
+            ));
           }
         }
 
@@ -161,15 +156,7 @@ export const swapTools = {
         );
 
         // Gas estimation
-        let gasEstimate = "0.0214"; // fallback
-        try {
-          const gasPrice = await client.getGasPrice();
-          const gasUnits = 150000n; // conservative estimate for swap tx
-          const gasCostWei = gasUnits * gasPrice;
-          gasEstimate = formatEther(gasCostWei);
-        } catch {
-          // keep fallback
-        }
+        const gasEstimate = await estimateGasCost(150000n, "0.0214");
 
         // DEX fee in token amount
         const parsedAmountIn = parseFloat(amountIn);

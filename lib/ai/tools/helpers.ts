@@ -1,8 +1,8 @@
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, formatEther } from "viem";
 import { kasplexL2 } from "@/config/chains";
 import { CONTRACTS } from "@/config/contracts";
 import { KASPLEX_TOKENS } from "@/config/tokens";
-import { factoryAbi, pairAbi } from "@/config/abis";
+import { factoryAbi, pairAbi, erc20Abi } from "@/config/abis";
 
 export const client = createPublicClient({
   chain: kasplexL2,
@@ -78,4 +78,40 @@ export async function calculatePriceImpact(
   } catch {
     return "0";
   }
+}
+
+export async function estimateGasCost(gasUnits: bigint, fallback: string): Promise<string> {
+  try {
+    const gasPrice = await client.getGasPrice();
+    return formatEther(gasUnits * gasPrice);
+  } catch {
+    return fallback;
+  }
+}
+
+export function calculateMinAmount(rawAmount: bigint, slippagePercent: number): bigint {
+  const slippageBps = BigInt(Math.round(slippagePercent * 100));
+  return rawAmount - (rawAmount * slippageBps) / 10000n;
+}
+
+export async function checkAllowance(
+  tokenAddress: `0x${string}`,
+  owner: `0x${string}`,
+  spender: `0x${string}`,
+  requiredAmount: bigint
+): Promise<{ needsApproval: boolean; currentAllowance: string }> {
+  const allowance = (await client.readContract({
+    address: tokenAddress,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: [owner, spender],
+  })) as bigint;
+  return {
+    needsApproval: allowance < requiredAmount,
+    currentAllowance: allowance.toString(),
+  };
+}
+
+export function addressToSymbol(addr: string): string {
+  return KASPLEX_TOKENS.find(t => t.address?.toLowerCase() === addr.toLowerCase())?.symbol ?? "???";
 }
