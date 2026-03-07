@@ -1,7 +1,10 @@
 "use client";
 
 import type { RiskFlag, RiskLevel, ContractInfo } from "@/lib/ai/tool-types";
+import { shortenAddress } from "@/lib/format";
 import { useState } from "react";
+
+export { shortenAddress };
 
 // ── Token Badge ──
 
@@ -33,12 +36,6 @@ export function formatAmount(val: string): string {
   if (n >= 1_000_000) return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
   if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
   return n.toLocaleString("en-US", { maximumFractionDigits: 8 });
-}
-
-// ── Shorten Address ──
-
-export function shortenAddress(addr: string) {
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
 // ── Risk Flags ──
@@ -192,5 +189,72 @@ export function DetailRow({ label, value, className }: { label: string; value: s
       <div className="text-zinc-500">{label}</div>
       <div className={`text-zinc-300 font-mono text-right ${className ?? ""}`}>{value}</div>
     </>
+  );
+}
+
+// ── Action Area ──
+
+export function ActionArea({
+  isConnected,
+  state,
+  isLoading,
+  txHash,
+  errorMsg,
+  onExecute,
+  onRetry,
+  onCancel,
+  walletMessage,
+  successMessage,
+  buttonLabel,
+  loadingLabel,
+}: {
+  isConnected: boolean;
+  state: string;
+  isLoading: boolean;
+  txHash?: string;
+  errorMsg: string;
+  onExecute: () => void;
+  onRetry: () => void;
+  onCancel: () => void;
+  walletMessage: string;
+  successMessage: string;
+  buttonLabel: string;
+  loadingLabel: string;
+}) {
+  return (
+    <div className="mt-4">
+      {!isConnected ? (
+        <div className="text-sm text-zinc-500 text-center py-2">{walletMessage}</div>
+      ) : state === "success" ? (
+        <SuccessState message={successMessage} txHash={txHash} />
+      ) : state === "error" ? (
+        <ErrorState message={errorMsg} onRetry={onRetry} />
+      ) : (
+        <div className="flex gap-2">
+          <button
+            onClick={onExecute}
+            disabled={isLoading}
+            className="flex-1 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium transition-colors cursor-pointer"
+          >
+            {isLoading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-3.5 w-3.5 rounded-full border-2 border-zinc-500 border-t-white animate-spin" />
+                {loadingLabel}
+              </span>
+            ) : (
+              buttonLabel
+            )}
+          </button>
+          {!isLoading && (
+            <button
+              onClick={onCancel}
+              className="px-4 py-2.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-sm font-medium transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

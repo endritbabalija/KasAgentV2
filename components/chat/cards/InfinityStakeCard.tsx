@@ -10,8 +10,7 @@ import {
   formatAmount,
   RiskFlagList,
   ContractInfoAccordion,
-  SuccessState,
-  ErrorState,
+  ActionArea,
   CancelledState,
   DetailRow,
 } from "./shared/ExecutionCardParts";
@@ -117,42 +116,20 @@ export function InfinityStakeCard({ data }: { data: PrepareInfinityStakeResult }
         </div>
       )}
 
-      <div className="mt-4">
-        {!isConnected ? (
-          <div className="text-sm text-zinc-500 text-center py-2">Connect your wallet to stake</div>
-        ) : state === "success" ? (
-          <SuccessState message={`${data.token} staked! You received x${data.token}.`} txHash={txHash} />
-        ) : state === "error" ? (
-          <ErrorState message={errorMsg} onRetry={handleRetry} />
-        ) : (
-          <div className="flex gap-2">
-            <button
-              onClick={handleExecute}
-              disabled={isLoading}
-              className="flex-1 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium transition-colors cursor-pointer"
-            >
-              {isLoading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="h-3.5 w-3.5 rounded-full border-2 border-zinc-500 border-t-white animate-spin" />
-                  {state === "approving" ? `Approving ${data.token}...` : "Staking..."}
-                </span>
-              ) : data.needsApproval ? (
-                `Approve & Stake ${data.token}`
-              ) : (
-                `Stake ${data.token}`
-              )}
-            </button>
-            {!isLoading && (
-              <button
-                onClick={() => setState("cancelled")}
-                className="px-4 py-2.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-sm font-medium transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <ActionArea
+        isConnected={isConnected}
+        state={state}
+        isLoading={isLoading}
+        txHash={txHash}
+        errorMsg={errorMsg}
+        onExecute={handleExecute}
+        onRetry={handleRetry}
+        onCancel={() => setState("cancelled")}
+        walletMessage="Connect your wallet to stake"
+        successMessage={`${data.token} staked! You received x${data.token}.`}
+        buttonLabel={data.needsApproval ? `Approve & Stake ${data.token}` : `Stake ${data.token}`}
+        loadingLabel={state === "approving" ? `Approving ${data.token}...` : "Staking..."}
+      />
     </div>
   );
 }
