@@ -1,20 +1,24 @@
 "use client";
 
 import { useState, useRef, type FormEvent, type KeyboardEvent } from "react";
-import { Square, ArrowUp } from "lucide-react";
+import { Square, ArrowUp, Plus } from "lucide-react";
 
 interface ChatInputProps {
   onSubmit: (text: string) => void;
   onStop: () => void;
+  onClearChat: () => void;
   isLoading: boolean;
   isConnected: boolean;
+  hasMessages: boolean;
 }
 
 export function ChatInput({
   onSubmit,
   onStop,
+  onClearChat,
   isLoading,
   isConnected,
+  hasMessages,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -57,6 +61,17 @@ export function ChatInput({
         onSubmit={handleSubmit}
         className="relative flex items-end gap-2 max-w-3xl mx-auto bg-zinc-900/80 border border-zinc-700/60 rounded-2xl px-3 py-2 backdrop-blur-sm shadow-[0_-4px_24px_rgba(0,0,0,0.3)]"
       >
+        {hasMessages && !isLoading && (
+          <button
+            type="button"
+            onClick={onClearChat}
+            className="p-2 text-zinc-500 hover:text-zinc-300 rounded-xl transition-colors shrink-0"
+            aria-label="New Chat"
+            title="New Chat"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        )}
         <textarea
           ref={textareaRef}
           value={input}

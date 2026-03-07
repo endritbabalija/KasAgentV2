@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import type { Portfolio } from "@/hooks/usePortfolio";
 import type { InfinityPoolInfo } from "@/hooks/useInfinityPoolData";
 import {
@@ -16,6 +16,46 @@ import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { WelcomeScreen } from "./WelcomeScreen";
 
+/* ------------------------------------------------------------------ */
+/*  localStorage chat persistence (per wallet, max 50 messages)       */
+/* ------------------------------------------------------------------ */
+
+const STORAGE_PREFIX = "kasagent_chat_";
+const MAX_STORED_MESSAGES = 50;
+
+function storageKey(address: string) {
+  return `${STORAGE_PREFIX}${address.toLowerCase()}`;
+}
+
+function loadMessages(address: string | undefined): UIMessage[] {
+  if (!address) return [];
+  try {
+    const raw = localStorage.getItem(storageKey(address));
+    if (!raw) return [];
+    return JSON.parse(raw) as UIMessage[];
+  } catch {
+    return [];
+  }
+}
+
+function persistMessages(address: string | undefined, msgs: UIMessage[]) {
+  if (!address) return;
+  if (msgs.length === 0) {
+    localStorage.removeItem(storageKey(address));
+    return;
+  }
+  try {
+    localStorage.setItem(
+      storageKey(address),
+      JSON.stringify(msgs.slice(-MAX_STORED_MESSAGES))
+    );
+  } catch {
+    // localStorage full — silently fail
+  }
+}
+
+/* ------------------------------------------------------------------ */
+
 interface ChatContainerProps {
   portfolio: Portfolio;
   pools: InfinityPoolInfo[];
@@ -23,6 +63,10 @@ interface ChatContainerProps {
 
 export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
   const { getTokenSymbol } = useTokenRegistry();
+
+  // Refs for latest wallet address (used by onFinish closure + wallet switch)
+  const addressRef = useRef(portfolio.address);
+  const prevAddressRef = useRef(portfolio.address);
 
   // Store latest serialized data in refs so the transport's body function
   // always reads fresh values without needing to recreate the transport.
@@ -56,9 +100,39 @@ export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
     })
   );
 
-  const { messages, status, error, stop, sendMessage } = useChat({
+  // Load initial messages from localStorage (evaluated once via ref)
+  const initialMessagesRef = useRef(loadMessages(portfolio.address));
+
+  const { messages, status, error, stop, sendMessage, setMessages } = useChat({
     transport: transportRef.current,
+    messages: initialMessagesRef.current,
+    onFinish: ({ messages: allMessages }) => {
+      persistMessages(addressRef.current, allMessages);
+    },
   });
+
+  // Keep addressRef fresh for the onFinish closure
+  addressRef.current = portfolio.address;
+
+  // Track current messages in a ref for the wallet-switch effect
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  // Handle wallet switch / disconnect
+  useEffect(() => {
+    const prevAddress = prevAddressRef.current;
+    const newAddress = portfolio.address;
+    if (prevAddress === newAddress) return;
+
+    // Save current messages for the old wallet
+    if (prevAddress && messagesRef.current.length > 0) {
+      persistMessages(prevAddress, messagesRef.current);
+    }
+
+    // Load messages for the new wallet (or clear if disconnected)
+    setMessages(loadMessages(newAddress));
+    prevAddressRef.current = newAddress;
+  }, [portfolio.address, setMessages]);
 
   const isLoading = status === "submitted" || status === "streaming";
   const isWaiting = status === "submitted";
@@ -74,6 +148,13 @@ export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
     }
   };
 
+  const handleClearChat = () => {
+    if (portfolio.address) {
+      localStorage.removeItem(storageKey(portfolio.address));
+    }
+    setMessages([]);
+  };
+
   return (
     <div className="flex flex-col h-full">
       {hasMessages ? (
@@ -87,8 +168,10 @@ export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
           <ChatInput
             onSubmit={handleSubmit}
             onStop={stop}
+            onClearChat={handleClearChat}
             isLoading={isLoading}
             isConnected={portfolio.isConnected}
+            hasMessages
           />
         </>
       ) : (
@@ -103,8 +186,10 @@ export function ChatContainer({ portfolio, pools }: ChatContainerProps) {
               <ChatInput
                 onSubmit={handleSubmit}
                 onStop={stop}
+                onClearChat={handleClearChat}
                 isLoading={isLoading}
                 isConnected={portfolio.isConnected}
+                hasMessages={false}
               />
             </div>
           </div>
