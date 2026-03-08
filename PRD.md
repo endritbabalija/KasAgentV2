@@ -1,7 +1,7 @@
 # KasAgent — Product Requirements Document
 
 > **AI DeFi Copilot for Kasplex L2**
-> Version 1.2 · March 2026
+> Version 1.3 · March 2026
 
 ---
 
@@ -215,7 +215,7 @@ Chain-level capabilities (e.g., transaction history via Blockscout) are the one 
 |---|---|
 | **Input** | Free-text natural language input |
 | **Output** | Mixed-content responses: markdown text interleaved with structured data cards rendered from tool results |
-| **Conversation history** | Persisted per session, scrollable, with clear message attribution (user vs. AI) |
+| **Conversation history** | Persisted to Supabase (per wallet), scrollable, with clear message attribution (user vs. AI). Sidebar lists past conversations grouped by time. |
 | **Context awareness** | AI has access to connected wallet data, available protocols, and current conversation context |
 | **Example prompts** | "What can I do with my tokens?", "Find the best yield", "Swap 200 USDC to KAS", "Explain this transaction" |
 
@@ -265,7 +265,7 @@ An AI response like *"Here's the quote: [tool result] As you can see..."* render
 - AI responds within 5 seconds for informational queries
 - AI correctly interprets swap commands with token names and amounts
 - AI provides actionable suggestions with one-click execution
-- Conversation history persists within a session
+- Conversation history persists across sessions via Supabase (per wallet address)
 - AI gracefully handles ambiguous or unsupported requests
 - Tool results render as visual cards inline in the conversation, not as raw text or hidden data
 - Cards display loading skeletons while tool calls are in progress
@@ -617,11 +617,12 @@ Contextual follow-up suggestions that appear after AI responses containing tool 
 **Component Architecture:**
 
 ```
-app/page.tsx (layout orchestrator, owns portfolio hooks)
+app/page.tsx (layout orchestrator, owns portfolio + conversation hooks)
 ├── components/header/AppHeader.tsx (logo, network status, KAS balance, sidebar toggle)
 │   └── components/header/NetworkStatus.tsx (chain connection indicator)
-├── components/sidebar/PortfolioSidebar.tsx (collapsible portfolio panel)
-└── components/chat/ChatContainer.tsx (chat logic, AI transport, message handling)
+├── components/sidebar/PortfolioSidebar.tsx (tabbed sidebar: Chats | Portfolio)
+│   └── components/sidebar/ConversationList.tsx (conversation history grouped by time)
+└── components/chat/ChatContainer.tsx (keyed by chatLoadKey for reset, AI transport, message handling)
     └── components/chat/MessageList.tsx (scrollable messages, max-w-3xl constraint)
         ├── components/chat/ChatMessage.tsx (iterates message.parts → text or tool card)
         │   ├── MarkdownRenderer (text parts)
@@ -769,7 +770,7 @@ ChainModule {
 |---|---|
 | **Concurrent users** | Stateless frontend; AI layer scales horizontally |
 | **RPC load** | Batch RPC calls where possible; cache pool/token data with short TTL |
-| **Conversation state** | Client-side session storage; no persistent backend database required for MVP |
+| **Conversation state** | Supabase Postgres (conversations + messages tables, per wallet address). RLS enabled with service-role-only access from API routes. |
 
 ### Accessibility
 
@@ -985,11 +986,15 @@ All displayed values will be labeled as **Estimated APY** and refreshed periodic
 
 The MVP will not implement traditional user accounts. User identity will be based solely on wallet connection.
 
-User preferences and conversation history may be stored using:
-- Local browser storage
-- Optional backend session storage linked to wallet signatures
+User identity is based on wallet address. Conversation history is persisted to Supabase Postgres, keyed by wallet address. This provides cross-device persistence without requiring user accounts or authentication beyond wallet connection.
 
-Full account systems may be introduced later if cross-device persistence becomes necessary.
+**Conversation Storage:**
+- **Database:** Supabase Postgres (`conversations` and `messages` tables)
+- **Access:** Server-side API routes using service role key (bypasses RLS)
+- **Security:** RLS enabled with no anon policies — the public anon key cannot access data directly
+- **API routes:** `GET/DELETE /api/conversations/[id]`, `GET /api/conversations`, `POST /api/conversations/save`
+
+Full account systems may be introduced later if user preferences beyond conversation history are needed.
 
 ### Gas Sponsorship
 
@@ -1032,6 +1037,29 @@ The AI tool definitions were reorganized from a single monolithic `lib/ai/tools.
 
 **Convention:** Each tool module exports a `*Tools` object (e.g., `swapTools`, `farmTools`) that is spread into the aggregated `aiTools` in `index.ts`. Chain-level tools (e.g., `history.ts` using Blockscout REST API) are kept separate from protocol-level tools (e.g., `swap.ts` using viem/RPC) to make the chain vs. protocol boundary explicit.
 
+### Conversation Persistence (Supabase)
+
+Conversation history was migrated from localStorage to Supabase Postgres to enable cross-device persistence and eliminate the 50-message localStorage cap.
+
+**Architecture:**
+- Two tables: `conversations` (id, wallet_address, title, timestamps) and `messages` (id, conversation_id FK with CASCADE, role, parts as JSONB)
+- Server-side Supabase client (`lib/supabase.ts`) uses the service role key — never exposed to the client
+- RLS enabled on both tables with no policies for the anon role, locking out direct PostgREST access
+- Three API routes handle CRUD: `GET /api/conversations` (list by wallet), `GET/DELETE /api/conversations/[id]` (load/delete with ownership check), `POST /api/conversations/save` (create or update)
+- Conversation titles are auto-generated from the first user message (truncated to 60 chars)
+
+**Sidebar UI:**
+- `PortfolioSidebar` has two tabs: Chats (MessageSquare icon) and Portfolio (Wallet icon)
+- `ConversationList` groups conversations by time (Today, Yesterday, Previous 7 days, Older)
+- "New Chat" button at the top; delete button on hover per conversation
+- Default tab is "Chats" if wallet is connected and conversations exist, "Portfolio" otherwise
+
+**State management:**
+- `useConversations` hook manages conversation list, active ID, loaded messages, tab state, and a `chatLoadKey` counter
+- `chatLoadKey` is used as React `key` on `ChatContainer` — changing it remounts the component, which is the idiomatic React pattern for resetting component state
+- `saveConversation` (called from `onFinish`) updates `activeConversationId` silently without incrementing `chatLoadKey`, so saving mid-stream never wipes the active chat
+- User-initiated actions (new chat, load conversation, delete active, wallet switch) increment `chatLoadKey` to trigger a clean remount
+
 ---
 
 ## 16. Open Questions
@@ -1044,7 +1072,7 @@ The AI tool definitions were reorganized from a single monolithic `lib/ai/tools.
 | 4 | **Token price feeds** | For MVP, derive prices from **DEX liquidity pools on ZealousSwap** using on-chain reserve ratios. Use pools paired with **USDC or another stablecoin** to estimate USD prices. Later phases may integrate external APIs such as CoinGecko or Dexscreener, or implement an on-chain oracle. | Engineering |
 | 5 | **LLM provider selection** | Start with **Claude API** due to strong reasoning and planning capabilities. Implement an abstraction layer allowing fallback to **OpenAI or other providers**. The AI layer should use structured tools and minimize token usage to control cost. | Product / Engineering |
 | 6 | **InfinityPool APY calculation** | For pools using `zealPerBlock()` emissions, calculate APY using `(rewardPerBlock × blocksPerYear × tokenPrice) / TVL`. For pools with manual reward distribution, calculate APY using reward schedule and pool TVL. Display results as **estimated APY** and refresh periodically. | Engineering |
-| 7 | **User authentication** | MVP should rely **only on wallet connection for identity**. Preferences and conversation history can be stored in **local storage or optional backend sessions linked to wallet signatures**. Full user accounts can be introduced later if cross-device persistence is required. | Product |
+| 7 | **User authentication** | **Resolved.** MVP uses wallet address as identity. Conversation history is persisted to Supabase Postgres keyed by wallet address, providing cross-device persistence without user accounts. Server-side API routes use the service role key; RLS is enabled with no anon policies to lock out direct public access. | Product |
 | 8 | **Gas sponsorship** | Do not sponsor gas initially. Evaluate onboarding friction first. If necessary, introduce **limited gas sponsorship for first-time users** (e.g., first 3 transactions per wallet) using a relayer system with strict limits to prevent abuse. | Product / Business |
 | 9 | **Legal disclaimers** | Include disclaimers stating that the AI provides **informational assistance only and not financial advice**. Users must confirm they understand and approve every transaction before signing. Legal review should be conducted before public launch to ensure compliance with applicable jurisdictions. | Legal |
 | 10 | **Analytics and telemetry** | Use a **privacy-focused analytics platform** such as PostHog or Plausible. Track anonymized events such as wallet connected, strategy suggested, transaction prepared, and transaction executed. Avoid storing raw wallet addresses in analytics logs to protect user privacy. | Product / Engineering |

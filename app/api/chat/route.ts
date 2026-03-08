@@ -12,50 +12,7 @@ import type {
   SerializedInfinityPool,
 } from "@/lib/ai/serializers";
 import "@/lib/env"; // validate env vars at startup
-
-/* ------------------------------------------------------------------ */
-/*  In-memory rate limiter (per wallet, 30 req / 15 min)              */
-/* ------------------------------------------------------------------ */
-
-const RATE_LIMIT = 30;
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-
-interface RateBucket {
-  count: number;
-  resetTime: number;
-}
-
-const rateLimitMap = new Map<string, RateBucket>();
-
-// Periodically purge expired entries to prevent memory leaks
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, bucket] of rateLimitMap) {
-    if (now >= bucket.resetTime) {
-      rateLimitMap.delete(key);
-    }
-  }
-}, CLEANUP_INTERVAL_MS);
-
-function checkRateLimit(wallet: string): { allowed: boolean; retryInMin?: number } {
-  const now = Date.now();
-  const key = wallet.toLowerCase();
-  const bucket = rateLimitMap.get(key);
-
-  if (!bucket || now >= bucket.resetTime) {
-    rateLimitMap.set(key, { count: 1, resetTime: now + WINDOW_MS });
-    return { allowed: true };
-  }
-
-  if (bucket.count >= RATE_LIMIT) {
-    const retryInMin = Math.ceil((bucket.resetTime - now) / 60_000);
-    return { allowed: false, retryInMin };
-  }
-
-  bucket.count++;
-  return { allowed: true };
-}
+import { supabase } from "@/lib/supabase";
 
 /* ------------------------------------------------------------------ */
 /*  Route handler                                                      */
@@ -76,11 +33,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1B — Rate limiting
-    const { allowed, retryInMin } = checkRateLimit(walletAddress);
-    if (!allowed) {
+    // 1B — Rate limiting (Supabase-backed, persists across deploys)
+    const { data: rl, error: rlError } = await supabase.rpc("check_rate_limit", {
+      wallet_addr: walletAddress,
+    });
+    if (rlError) {
+      console.error("[rate-limit] Supabase RPC error:", rlError);
+      // Fail open — don't block users if the rate-limit DB is down
+    } else if (rl && !rl.allowed) {
       return Response.json(
-        { error: `Rate limit exceeded. Try again in ${retryInMin} minutes.` },
+        { error: `Rate limit exceeded. Try again in ${rl.retry_in_min} minutes.` },
         { status: 429 }
       );
     }

@@ -11,6 +11,7 @@ This repository implements the current KasAgent web app and follows the product 
 - Provides an AI chat UI backed by tool calls and structured response cards
 - Surfaces swap quotes, pool reserves, farm data, yield opportunities, and transaction history
 - Can prepare and execute DeFi actions such as swaps, liquidity actions, farm staking, and InfinityPool staking
+- Persists conversation history per wallet via Supabase, with a sidebar for browsing past chats
 - Keeps transaction signing non-custodial in the user's wallet
 
 ## Current MVP Scope
@@ -22,6 +23,7 @@ Implemented areas in this codebase include:
 - Wallet connection with `wagmi` + `RainbowKit`
 - Portfolio aggregation hooks for balances, LPs, farms, and staking
 - Chat-driven UI with inline tool result cards
+- Database-backed conversation persistence (Supabase Postgres) with tabbed sidebar (Chats | Portfolio)
 - Anthropic-powered AI route for intent handling and tool orchestration
 - Direct execution cards for swap, add/remove liquidity, farm stake/unstake, and InfinityPool stake/unstake
 - Explorer-backed recent transaction history in chat
@@ -51,6 +53,7 @@ Not in scope for this repo today:
 - `wagmi`, `viem`, `RainbowKit`
 - Vercel AI SDK
 - Anthropic Claude
+- Supabase (Postgres — conversation persistence)
 
 ## Network and Protocol
 
@@ -94,6 +97,9 @@ Required variables:
 ```env
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
 ANTHROPIC_API_KEY=your_anthropic_api_key
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
 
 ### 3. Run the app
@@ -119,27 +125,34 @@ Use a wallet supported by RainbowKit, then switch to Kasplex L2 if prompted.
 
 ```text
 app/
-  api/chat/route.ts        AI chat endpoint
-  page.tsx                 main application shell
-  providers.tsx            wagmi, query, and RainbowKit providers
+  api/chat/route.ts                AI chat endpoint
+  api/conversations/route.ts       list conversations (GET)
+  api/conversations/[id]/route.ts  load/delete conversation (GET/DELETE)
+  api/conversations/save/route.ts  create or update conversation (POST)
+  page.tsx                         main application shell
+  providers.tsx                    wagmi, query, and RainbowKit providers
 components/
-  chat/                    chat UI, message rendering, action cards
-  header/                  app header and network status
-  sidebar/                 portfolio sidebar
+  chat/                            chat UI, message rendering, action cards
+  header/                          app header and network status
+  sidebar/
+    PortfolioSidebar.tsx           tabbed sidebar (Chats | Portfolio)
+    ConversationList.tsx           conversation list grouped by time
 config/
-  chains.ts                Kasplex L2 chain definition
-  contracts.ts             ZealousSwap contract addresses
-  tokens.ts                KAS_NATIVE constant, Token interface, TOKEN_LOGOS map
+  chains.ts                        Kasplex L2 chain definition
+  contracts.ts                     ZealousSwap contract addresses
+  tokens.ts                        KAS_NATIVE constant, Token interface, TOKEN_LOGOS map
 hooks/
-  usePortfolio.ts          aggregated wallet portfolio state
-  useTokenRegistry.ts      client-side dynamic token discovery from Factory pairs
-  use*.ts                  on-chain data hooks
+  usePortfolio.ts                  aggregated wallet portfolio state
+  useConversations.ts              conversation CRUD, sidebar tab state, chatLoadKey
+  useTokenRegistry.ts              client-side dynamic token discovery from Factory pairs
+  use*.ts                          on-chain data hooks
 lib/
-  token-registry.ts        server-side token discovery (5-min cache, used by AI tools)
-  viem-client.ts           shared viem public client instance
+  supabase.ts                      server-side Supabase client (service role key)
+  token-registry.ts                server-side token discovery (5-min cache, used by AI tools)
+  viem-client.ts                   shared viem public client instance
 lib/ai/
-  system-prompt.ts         model instructions and wallet context (async, uses token registry)
-  tools/                   AI tool modules by domain
+  system-prompt.ts                 model instructions and wallet context (async, uses token registry)
+  tools/                           AI tool modules by domain
 ```
 
 ## AI Tooling
