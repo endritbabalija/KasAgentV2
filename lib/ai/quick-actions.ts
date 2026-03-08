@@ -1,6 +1,7 @@
 export interface QuickAction {
   label: string;
   message: string;
+  variant?: "primary" | "secondary";
 }
 
 const ACTION_TOOLS = new Set([
@@ -35,8 +36,9 @@ export function getQuickActions(
         {
           label: `Stake ${tokenOut || "tokens"}`,
           message: `Check staking rates for ${tokenOut || "the output token"}`,
+          variant: "primary",
         },
-        { label: "Find better rate", message: "Find a better swap rate" },
+        { label: "Find better rate", message: "Find a better swap rate", variant: "secondary" },
       ];
     }
     case "getPoolReserves":
@@ -44,6 +46,7 @@ export function getQuickActions(
         {
           label: "Check farms",
           message: "Check farms for this pair",
+          variant: "primary",
         },
       ];
     case "getActiveFarms":
@@ -51,6 +54,7 @@ export function getQuickActions(
         {
           label: "Compare staking",
           message: "Compare with staking yields",
+          variant: "secondary",
         },
       ];
     case "getInfinityPoolRates":
@@ -58,6 +62,7 @@ export function getQuickActions(
         {
           label: "Best yield",
           message: "What's the best yield opportunity right now?",
+          variant: "primary",
         },
       ];
     case "discoverYieldOpportunities":
@@ -65,6 +70,7 @@ export function getQuickActions(
         {
           label: "Show top option",
           message: "Show me the top option in detail",
+          variant: "primary",
         },
       ];
     case "getTransactionHistory":
@@ -72,10 +78,12 @@ export function getQuickActions(
         {
           label: "Check portfolio",
           message: "What's my current portfolio?",
+          variant: "primary",
         },
         {
           label: "Find yield",
           message: "What are the best yield opportunities?",
+          variant: "secondary",
         },
       ];
     default:

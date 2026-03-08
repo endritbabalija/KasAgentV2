@@ -55,7 +55,7 @@ export function ChatInput({
     <div className="shrink-0 px-3 sm:px-4 pb-4 pt-2">
       <form
         onSubmit={handleSubmit}
-        className="relative flex items-end gap-2 max-w-3xl mx-auto bg-zinc-900/80 border border-zinc-700/60 rounded-2xl px-3 py-2 backdrop-blur-sm shadow-[0_-4px_24px_rgba(0,0,0,0.3)]"
+        className="relative flex items-end gap-2 max-w-3xl mx-auto bg-zinc-900/80 border border-zinc-700/60 rounded-2xl px-3 py-2 backdrop-blur-sm shadow-[0_-2px_12px_rgba(0,0,0,0.15)]"
       >
         <textarea
           ref={textareaRef}

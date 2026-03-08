@@ -4,6 +4,17 @@ import { useState, useEffect } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import type { ConversationSummary } from "@/hooks/useConversations";
 
+function formatRelativeTime(dateStr: string): string {
+  const now = Date.now();
+  const diff = now - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(dateStr));
+}
+
 interface ConversationListProps {
   conversations: ConversationSummary[];
   activeConversationId: string | null;
@@ -113,9 +124,14 @@ export function ConversationList({
                         : "hover:bg-zinc-800"
                     }`}
                   >
-                    <span className="text-sm text-zinc-300 truncate flex-1 mr-2">
-                      {c.title}
-                    </span>
+                    <div className="flex flex-col flex-1 mr-2 min-w-0">
+                      <span className="text-sm text-zinc-300 truncate">
+                        {c.title}
+                      </span>
+                      <span className="text-xs text-zinc-600">
+                        {formatRelativeTime(c.updated_at)}
+                      </span>
+                    </div>
                     {confirmDeleteId === c.id ? (
                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                         <button

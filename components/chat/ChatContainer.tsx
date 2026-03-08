@@ -12,6 +12,7 @@ import {
   type SerializedInfinityPool,
 } from "@/lib/ai/serializers";
 import { useTokenRegistry } from "@/hooks/useTokenRegistry";
+import { AlertTriangle } from "lucide-react";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { WelcomeScreen } from "./WelcomeScreen";
@@ -85,7 +86,7 @@ export function ChatContainer({
     conversationIdRef.current = activeConversationId;
   });
 
-  const { messages, status, error, stop, sendMessage } = useChat({
+  const { messages, status, error, stop, sendMessage, regenerate } = useChat({
     transport,
     messages: initialMessages,
     onFinish: ({ messages: allMessages }) => {
@@ -170,15 +171,17 @@ export function ChatContainer({
             isStreaming={status === "streaming"}
             error={error}
             onSendMessage={handleSuggestionClick}
+            onRetry={regenerate}
           />
           {saveError && (
-            <div className="text-center py-1.5 px-4 flex items-center justify-center gap-2">
-              <p className="text-xs text-amber-400/80">
+            <div className="mx-3 sm:mx-4 mb-1 max-w-3xl self-center w-full py-2 px-3 bg-amber-950/50 border border-amber-700/50 rounded-lg flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <p className="text-sm text-amber-400 flex-1">
                 {saveError}
               </p>
               <button
                 onClick={handleRetrySave}
-                className="text-xs text-amber-400 hover:text-amber-300 underline underline-offset-2"
+                className="text-sm text-amber-400 hover:text-amber-300 underline underline-offset-2 font-medium shrink-0"
               >
                 Retry
               </button>
@@ -198,6 +201,12 @@ export function ChatContainer({
             <WelcomeScreen
               isConnected={portfolio.isConnected}
               onSuggestionClick={handleSuggestionClick}
+              hasBalances={portfolio.balances.length > 0}
+              hasPositions={
+                portfolio.lpPositions.length > 0 ||
+                portfolio.farmPositions.length > 0 ||
+                portfolio.stakingPositions.some((s) => s.xTokenBalance > 0n)
+              }
             />
             <div className="w-full max-w-2xl mt-6">
               <ChatInput

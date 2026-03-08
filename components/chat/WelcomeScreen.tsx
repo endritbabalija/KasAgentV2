@@ -1,20 +1,44 @@
 "use client";
 
-const SUGGESTIONS = [
+const DEFAULT_SUGGESTIONS = [
   "What can I do with my tokens?",
   "Find the best yield opportunities",
   "Show me my portfolio summary",
   "How does staking work on ZealousSwap?",
 ];
 
+const POSITION_SUGGESTIONS = [
+  "How are my LP positions doing?",
+  "Check my pending farm rewards",
+  "Find the best yield opportunities",
+  "Show me my portfolio summary",
+];
+
+const BALANCE_ONLY_SUGGESTIONS = [
+  "What can I do with my tokens?",
+  "Find the best yield opportunities",
+  "Show me my portfolio summary",
+  "What are the best swap routes?",
+];
+
+function getSuggestions(hasBalances: boolean, hasPositions: boolean): string[] {
+  if (hasPositions) return POSITION_SUGGESTIONS;
+  if (hasBalances) return BALANCE_ONLY_SUGGESTIONS;
+  return DEFAULT_SUGGESTIONS;
+}
+
 interface WelcomeScreenProps {
   isConnected: boolean;
   onSuggestionClick: (suggestion: string) => void;
+  hasBalances?: boolean;
+  hasPositions?: boolean;
 }
 
 export function WelcomeScreen({
   isConnected,
   onSuggestionClick,
+  hasBalances = false,
+  hasPositions = false,
 }: WelcomeScreenProps) {
   return (
     <div className="flex flex-col items-center">
@@ -27,7 +51,7 @@ export function WelcomeScreen({
 
       {isConnected ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full px-2 sm:px-0">
-          {SUGGESTIONS.map((suggestion) => (
+          {getSuggestions(hasBalances, hasPositions).map((suggestion) => (
             <button
               key={suggestion}
               onClick={() => onSuggestionClick(suggestion)}

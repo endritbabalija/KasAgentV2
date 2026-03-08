@@ -1,3 +1,4 @@
+import type { SystemModelMessage } from "ai";
 import type { SerializedPortfolio, SerializedInfinityPool } from "./serializers";
 import { CONTRACTS } from "@/config/contracts";
 import { getAllTokens } from "@/lib/token-registry";
@@ -135,15 +136,42 @@ const RESPONSE_GUIDELINES = `
 - **Transaction history**: Summarize key patterns (most common actions, notable transfers). Highlight any failed transactions or large movements.
 - **Unknown**: If you don't have enough info, say so rather than guessing.`;
 
+/**
+ * Build the system prompt as an ordered array of parts with Anthropic cache
+ * breakpoints.  Anthropic caches the contiguous prefix up to each
+ * `cacheControl` marker (tools are sent before system, so they're included
+ * automatically).
+ *
+ * Order (static → semi-static → dynamic):
+ *   1. IDENTITY + BEHAVIOR_RULES + RESPONSE_GUIDELINES  (static, cached)
+ *   2. Protocol knowledge incl. token list              (semi-static, cached – token list has a 5-min server cache)
+ *   3. Wallet context                                    (dynamic, NOT cached)
+ */
 export async function buildSystemPrompt(
   portfolio: SerializedPortfolio | null,
   infinityPools: SerializedInfinityPool[]
-): Promise<string> {
+): Promise<SystemModelMessage[]> {
+  const CACHE_BREAKPOINT = {
+    anthropic: { cacheControl: { type: "ephemeral" as const } },
+  };
+
   return [
-    IDENTITY,
-    BEHAVIOR_RULES,
-    await buildProtocolKnowledge(),
-    buildWalletContext(portfolio, infinityPools),
-    RESPONSE_GUIDELINES,
-  ].join("\n");
+    // Block 1 — Static: never changes between requests or users
+    {
+      role: "system" as const,
+      content: [IDENTITY, BEHAVIOR_RULES, RESPONSE_GUIDELINES].join("\n"),
+      providerOptions: CACHE_BREAKPOINT,
+    },
+    // Block 2 — Semi-static: token list refreshes every ~5 min (matches cache TTL)
+    {
+      role: "system" as const,
+      content: await buildProtocolKnowledge(),
+      providerOptions: CACHE_BREAKPOINT,
+    },
+    // Block 3 — Dynamic: per-user wallet balances & positions
+    {
+      role: "system" as const,
+      content: buildWalletContext(portfolio, infinityPools),
+    },
+  ];
 }

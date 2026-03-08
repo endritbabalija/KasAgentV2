@@ -12,6 +12,7 @@ interface MessageListProps {
   isStreaming: boolean;
   error: Error | undefined;
   onSendMessage: (text: string) => void;
+  onRetry: () => void;
 }
 
 export function MessageList({
@@ -20,6 +21,7 @@ export function MessageList({
   isStreaming,
   error,
   onSendMessage,
+  onRetry,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -98,6 +100,12 @@ export function MessageList({
             <p className="text-sm text-red-400">
               {error.message || "Something went wrong. Please try again."}
             </p>
+            <button
+              onClick={onRetry}
+              className="mt-1.5 text-sm text-red-400 hover:text-red-300 underline underline-offset-2 transition-colors"
+            >
+              Try again
+            </button>
           </div>
         </div>
       )}

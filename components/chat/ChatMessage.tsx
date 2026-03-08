@@ -31,7 +31,7 @@ export const ChatMessage = memo(
 
       return (
         <div className="flex justify-end">
-          <div className="max-w-[95%] sm:max-w-[85%] rounded-2xl px-4 py-3 bg-zinc-700 text-zinc-100">
+          <div className="max-w-[95%] sm:max-w-[85%] rounded-2xl px-4 py-3 bg-teal-900/60 border border-teal-700/40 text-zinc-100">
             <p className="whitespace-pre-wrap">{text}</p>
           </div>
         </div>
@@ -94,7 +94,11 @@ export const ChatMessage = memo(
 
     if (elements.length === 0) return null;
 
-    return <div className="space-y-3">{elements}</div>;
+    return (
+      <div className={elements.length > 1 ? "space-y-3 border-l-2 border-zinc-700/50 pl-3" : "space-y-3"}>
+        {elements}
+      </div>
+    );
   },
   // Custom comparator: skip re-render for non-last messages when only isStreaming changes
   (prev, next) => {

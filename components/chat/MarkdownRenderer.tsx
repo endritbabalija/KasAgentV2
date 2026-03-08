@@ -55,7 +55,7 @@ const components: Components = {
     if (!isBlock) {
       return (
         <code
-          className="bg-zinc-800 px-1.5 py-0.5 rounded text-sm text-emerald-400 font-mono"
+          className="bg-zinc-800 px-1.5 py-0.5 rounded text-sm text-sky-400 font-mono"
           {...props}
         >
           {children}

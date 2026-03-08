@@ -175,6 +175,26 @@ export function PortfolioSidebar({
             </div>
           ) : (
             <>
+              {/* Portfolio Summary */}
+              {(() => {
+                const stats = [
+                  { label: "Tokens", count: portfolio.balances.length },
+                  { label: "LPs", count: portfolio.lpPositions.length },
+                  { label: "Farms", count: portfolio.farmPositions.length },
+                  { label: "Staked", count: portfolio.stakingPositions.filter((s) => s.xTokenBalance > 0n).length },
+                ];
+                return (
+                  <div className="grid grid-cols-4 gap-2 bg-zinc-800/30 rounded-lg p-3">
+                    {stats.map((s) => (
+                      <div key={s.label} className="text-center">
+                        <div className="text-sm text-zinc-200 font-medium">{s.count}</div>
+                        <div className="text-xs text-zinc-500">{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Token Balances */}
               <Section title="Balances">
                 {portfolio.balances.length === 0 ? (
@@ -326,7 +346,7 @@ export function PortfolioSidebar({
       {!isOpen && (
         <button
           onClick={onToggle}
-          className="hidden md:flex items-center justify-center w-6 shrink-0 border-r border-zinc-800 hover:bg-zinc-800/50 transition-colors group"
+          className="hidden md:flex items-center justify-center w-8 shrink-0 border-r border-zinc-800 hover:bg-zinc-800/50 transition-colors group"
           aria-label="Open sidebar"
         >
           <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300" />
