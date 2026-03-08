@@ -1,0 +1,25 @@
+import { supabase } from "@/lib/supabase";
+
+const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const wallet = searchParams.get("wallet");
+
+  if (!wallet || !ETH_ADDRESS_RE.test(wallet)) {
+    return Response.json({ error: "Invalid wallet address" }, { status: 400 });
+  }
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id, title, updated_at")
+    .eq("wallet_address", wallet.toLowerCase())
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.error("[GET /api/conversations]", error);
+    return Response.json({ error: "Failed to fetch conversations" }, { status: 500 });
+  }
+
+  return Response.json(data);
+}
