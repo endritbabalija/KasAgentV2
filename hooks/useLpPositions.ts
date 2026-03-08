@@ -25,6 +25,7 @@ export function useLpPositions() {
     data: lpBalancesRaw,
     isLoading: balancesLoading,
     isError: balancesError,
+    isFetching: balancesFetching,
     refetch,
   } = useReadContracts({
     contracts: pairs.map((pair) => ({
@@ -68,6 +69,7 @@ export function useLpPositions() {
   return {
     positions,
     isLoading: pairsLoading || balancesLoading,
+    isFetching: balancesFetching,
     isError: balancesError,
     refetch,
   };

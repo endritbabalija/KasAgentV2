@@ -17,6 +17,7 @@ export function useConversations(walletAddress: string | undefined) {
   const [loadedMessages, setLoadedMessages] = useState<UIMessage[]>([]);
   const [activeTab, setActiveTab] = useState<SidebarTab>("portfolio");
   const [isLoading, setIsLoading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   // Incremented only on user-initiated resets (new chat, load, delete active, wallet switch).
   // Used as React key on ChatContainer — changing it remounts the component.
   // saveConversation does NOT increment this, so saving won't reset the chat.
@@ -33,8 +34,8 @@ export function useConversations(walletAddress: string | undefined) {
         const data = await res.json();
         setConversations(data);
       }
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error("[useConversations] Failed to refresh conversations:", err);
     }
   }, [walletAddress]);
 
@@ -77,6 +78,7 @@ export function useConversations(walletAddress: string | undefined) {
   const createNewChat = useCallback(() => {
     setActiveConversationId(null);
     setLoadedMessages([]);
+    setSaveError(null);
     setChatLoadKey((k) => k + 1);
   }, []);
 
@@ -84,6 +86,7 @@ export function useConversations(walletAddress: string | undefined) {
     async (id: string) => {
       if (!walletAddress) return;
       setIsLoading(true);
+      setSaveError(null);
       try {
         const res = await fetch(
           `/api/conversations/${id}?wallet=${walletAddress}`
@@ -100,8 +103,8 @@ export function useConversations(walletAddress: string | undefined) {
           );
           setChatLoadKey((k) => k + 1);
         }
-      } catch {
-        // silently fail
+      } catch (err) {
+        console.error("[useConversations] Failed to load conversation:", err);
       } finally {
         setIsLoading(false);
       }
@@ -125,8 +128,8 @@ export function useConversations(walletAddress: string | undefined) {
             setChatLoadKey((k) => k + 1);
           }
         }
-      } catch {
-        // silently fail
+      } catch (err) {
+        console.error("[useConversations] Failed to delete conversation:", err);
       }
     },
     [walletAddress, activeConversationId]
@@ -135,6 +138,7 @@ export function useConversations(walletAddress: string | undefined) {
   const saveConversation = useCallback(
     async (messages: UIMessage[]) => {
       if (!walletAddress || messages.length === 0) return null;
+      setSaveError(null);
       try {
         const res = await fetch("/api/conversations/save", {
           method: "POST",
@@ -154,8 +158,12 @@ export function useConversations(walletAddress: string | undefined) {
           refreshConversations();
           return newId;
         }
-      } catch {
-        // silently fail
+        // Server returned an error status
+        console.error("[useConversations] Save failed with status:", res.status);
+        setSaveError("Failed to save conversation. Your messages may not persist.");
+      } catch (err) {
+        console.error("[useConversations] Failed to save conversation:", err);
+        setSaveError("Failed to save conversation. Your messages may not persist.");
       }
       return null;
     },
@@ -169,6 +177,7 @@ export function useConversations(walletAddress: string | undefined) {
     activeTab,
     isLoading,
     chatLoadKey,
+    saveError,
     setActiveTab,
     createNewChat,
     loadConversation,

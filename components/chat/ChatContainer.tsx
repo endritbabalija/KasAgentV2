@@ -21,6 +21,7 @@ interface ChatContainerProps {
   pools: InfinityPoolInfo[];
   initialMessages: UIMessage[];
   onConversationSaved: (messages: UIMessage[]) => void;
+  saveError: string | null;
 }
 
 /**
@@ -57,6 +58,7 @@ export function ChatContainer({
   pools,
   initialMessages,
   onConversationSaved,
+  saveError,
 }: ChatContainerProps) {
   const { getTokenSymbol } = useTokenRegistry();
 
@@ -121,6 +123,13 @@ export function ChatContainer({
             error={error}
             onSendMessage={handleSuggestionClick}
           />
+          {saveError && (
+            <div className="text-center py-1.5 px-4">
+              <p className="text-xs text-amber-400/80">
+                {saveError}
+              </p>
+            </div>
+          )}
           <ChatInput
             onSubmit={handleSubmit}
             onStop={stop}

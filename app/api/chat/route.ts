@@ -48,6 +48,13 @@ export async function POST(req: Request) {
     }
 
     const messages: UIMessage[] = body.messages;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return Response.json(
+        { error: "messages field is required and must be a non-empty array" },
+        { status: 400 }
+      );
+    }
+
     const portfolio: SerializedPortfolio | null = body.portfolio ?? null;
     const infinityPools: SerializedInfinityPool[] = body.infinityPools ?? [];
 

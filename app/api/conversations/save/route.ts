@@ -49,25 +49,44 @@ export async function POST(req: Request) {
       convoId = data.id;
     } else {
       // Verify ownership
-      const { data: convo } = await supabase
+      const { data: convo, error: convoError } = await supabase
         .from("conversations")
         .select("wallet_address")
         .eq("id", convoId)
-        .single();
+        .maybeSingle();
 
-      if (!convo || convo.wallet_address.toLowerCase() !== wallet.toLowerCase()) {
+      if (convoError) {
+        console.error("[POST /api/conversations/save] ownership check error:", convoError);
+        return Response.json({ error: "Failed to verify conversation" }, { status: 500 });
+      }
+
+      if (!convo) {
+        return Response.json({ error: "Conversation not found" }, { status: 404 });
+      }
+
+      if (convo.wallet_address.toLowerCase() !== wallet.toLowerCase()) {
         return Response.json({ error: "Unauthorized" }, { status: 403 });
       }
 
       // Update timestamp
-      await supabase
+      const { error: updateError } = await supabase
         .from("conversations")
         .update({ updated_at: new Date().toISOString() })
         .eq("id", convoId);
+
+      if (updateError) {
+        console.error("[POST /api/conversations/save] timestamp update error:", updateError);
+        return Response.json({ error: "Failed to update conversation" }, { status: 500 });
+      }
     }
 
-    // Delete old messages and re-insert all (simplest approach for consistency)
-    await supabase.from("messages").delete().eq("conversation_id", convoId);
+    // Insert-before-delete: capture old IDs, insert new, then delete old.
+    // If insert fails, old messages remain intact (no data loss).
+    const { data: existing } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("conversation_id", convoId);
+    const oldIds = existing?.map((m: { id: string }) => m.id) ?? [];
 
     const rows = messages.map((m) => ({
       conversation_id: convoId,
@@ -79,6 +98,17 @@ export async function POST(req: Request) {
     if (insertError) {
       console.error("[POST /api/conversations/save] insert error:", insertError);
       return Response.json({ error: "Failed to save messages" }, { status: 500 });
+    }
+
+    // Clean up old messages — if this fails, we have duplicates but no data loss
+    if (oldIds.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("messages")
+        .delete()
+        .in("id", oldIds);
+      if (deleteError) {
+        console.error("[POST /api/conversations/save] old message cleanup error:", deleteError);
+      }
     }
 
     return Response.json({ conversationId: convoId });

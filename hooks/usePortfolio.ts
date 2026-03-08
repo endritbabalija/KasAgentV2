@@ -17,6 +17,7 @@ export interface Portfolio {
   address: `0x${string}` | undefined;
   isConnected: boolean;
   isLoading: boolean;
+  isFetching: boolean;
   isError: boolean;
   balances: TokenBalance[];
   lpPositions: LpPosition[];
@@ -42,6 +43,11 @@ export function usePortfolio(): Portfolio {
       lpPos.isLoading ||
       farmPos.isLoading ||
       stakingPos.isLoading,
+    isFetching:
+      tokenBalances.isFetching ||
+      lpPos.isFetching ||
+      farmPos.isFetching ||
+      stakingPos.isFetching,
     isError: tokenBalances.isError || lpPos.isError || farmPos.isError || stakingPos.isError,
     balances: tokenBalances.balances,
     lpPositions: lpPos.positions,

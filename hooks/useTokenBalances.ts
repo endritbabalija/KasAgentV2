@@ -21,6 +21,7 @@ export function useTokenBalances() {
     data: nativeBalance,
     isLoading: nativeLoading,
     isError: nativeError,
+    isFetching: nativeFetching,
     refetch: nativeRefetch,
   } = useBalance({ address });
 
@@ -34,6 +35,7 @@ export function useTokenBalances() {
     data: erc20Data,
     isLoading: erc20Loading,
     isError: erc20Error,
+    isFetching: erc20Fetching,
     refetch: erc20Refetch,
   } = useReadContracts({
     contracts: erc20Tokens.map((token) => ({
@@ -83,6 +85,7 @@ export function useTokenBalances() {
   return {
     balances,
     isLoading: registryLoading || nativeLoading || erc20Loading,
+    isFetching: nativeFetching || erc20Fetching,
     isError: nativeError || erc20Error,
     refetch: () => {
       nativeRefetch();

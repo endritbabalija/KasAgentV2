@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { ChevronRight, ChevronLeft, X, MessageSquare, Wallet } from "lucide-react";
+import { ChevronRight, ChevronLeft, X, MessageSquare, Wallet, RefreshCw } from "lucide-react";
 import type { Portfolio } from "@/hooks/usePortfolio";
 import type { InfinityPoolInfo } from "@/hooks/useInfinityPoolData";
 import type { ConversationSummary, SidebarTab } from "@/hooks/useConversations";
@@ -80,6 +80,19 @@ export function PortfolioSidebar({
               <Wallet className="w-3.5 h-3.5" />
               Portfolio
             </button>
+            {activeTab === "portfolio" && portfolio.isConnected && (
+              <button
+                onClick={() => portfolio.refetch()}
+                className="p-1.5 rounded hover:bg-zinc-800 transition-colors ml-1"
+                aria-label="Refresh portfolio"
+              >
+                <RefreshCw
+                  className={`w-3 h-3 text-zinc-500 hover:text-zinc-300${
+                    portfolio.isFetching ? " animate-spin" : ""
+                  }`}
+                />
+              </button>
+            )}
           </div>
           {/* Desktop: chevron close, Mobile: X close */}
           <button
@@ -115,6 +128,38 @@ export function PortfolioSidebar({
               <p className="text-zinc-500 text-sm">
                 Connect wallet to view portfolio
               </p>
+            </div>
+          ) : portfolio.isError ? (
+            <div className="text-center py-10 space-y-3">
+              <p className="text-red-400 text-sm">
+                Failed to load portfolio
+              </p>
+              <button
+                onClick={() => portfolio.refetch()}
+                className="text-xs text-zinc-400 hover:text-zinc-200 underline underline-offset-2 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          ) : portfolio.isLoading ? (
+            <div className="space-y-5 animate-pulse">
+              <div>
+                <div className="h-3 w-16 bg-zinc-800 rounded mb-3" />
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <div className="h-3.5 w-12 bg-zinc-800 rounded" />
+                    <div className="h-3.5 w-20 bg-zinc-800 rounded" />
+                  </div>
+                  <div className="flex justify-between">
+                    <div className="h-3.5 w-14 bg-zinc-800 rounded" />
+                    <div className="h-3.5 w-16 bg-zinc-800 rounded" />
+                  </div>
+                  <div className="flex justify-between">
+                    <div className="h-3.5 w-10 bg-zinc-800 rounded" />
+                    <div className="h-3.5 w-24 bg-zinc-800 rounded" />
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <>

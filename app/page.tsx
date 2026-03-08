@@ -28,6 +28,7 @@ export default function Home() {
     loadConversation,
     deleteConversation,
     saveConversation,
+    saveError,
   } = useConversations(portfolio.address);
 
   const handleConversationSaved = useCallback(
@@ -68,6 +69,7 @@ export default function Home() {
             pools={pools}
             initialMessages={loadedMessages}
             onConversationSaved={handleConversationSaved}
+            saveError={saveError}
           />
         </main>
       </div>

@@ -28,6 +28,7 @@ export function useFarmPositions() {
     data: userDataRaw,
     isLoading: userLoading,
     isError: userError,
+    isFetching: userFetching,
     refetch,
   } = useReadContracts({
     contracts: activePools.flatMap((pid) => [
@@ -80,6 +81,7 @@ export function useFarmPositions() {
     positions,
     globals,
     isLoading: farmsLoading || userLoading,
+    isFetching: userFetching,
     isError: farmsError || userError,
     refetch,
   };
