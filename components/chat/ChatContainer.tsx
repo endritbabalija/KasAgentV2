@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import type { Portfolio } from "@/hooks/usePortfolio";
@@ -20,7 +20,9 @@ interface ChatContainerProps {
   portfolio: Portfolio;
   pools: InfinityPoolInfo[];
   initialMessages: UIMessage[];
+  activeConversationId: string | null;
   onConversationSaved: (messages: UIMessage[]) => void;
+  onMessagesChange?: (messages: UIMessage[]) => void;
   saveError: string | null;
 }
 
@@ -57,7 +59,9 @@ export function ChatContainer({
   portfolio,
   pools,
   initialMessages,
+  activeConversationId,
   onConversationSaved,
+  onMessagesChange,
   saveError,
 }: ChatContainerProps) {
   const { getTokenSymbol } = useTokenRegistry();
@@ -72,13 +76,51 @@ export function ChatContainer({
       })
   );
 
+  // Refs to avoid stale closures in onError and beforeunload
+  const messagesRef = useRef<UIMessage[]>(initialMessages);
+  const onSavedRef = useRef(onConversationSaved);
+  const conversationIdRef = useRef(activeConversationId);
+  useEffect(() => {
+    onSavedRef.current = onConversationSaved;
+    conversationIdRef.current = activeConversationId;
+  });
+
   const { messages, status, error, stop, sendMessage } = useChat({
     transport,
     messages: initialMessages,
     onFinish: ({ messages: allMessages }) => {
       onConversationSaved(allMessages);
     },
+    onError: () => {
+      // Save whatever messages we have when the stream errors
+      if (messagesRef.current.length > 0) {
+        onSavedRef.current(messagesRef.current);
+      }
+    },
   });
+
+  // Keep refs and parent in sync with latest messages
+  useEffect(() => {
+    messagesRef.current = messages;
+    onMessagesChange?.(messages);
+  }, [messages, onMessagesChange]);
+
+  // Save on tab close / navigation
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (messagesRef.current.length > 0 && portfolio.address) {
+        const payload = JSON.stringify({
+          walletAddress: portfolio.address,
+          conversationId: conversationIdRef.current,
+          messages: messagesRef.current,
+        });
+        const blob = new Blob([payload], { type: "application/json" });
+        navigator.sendBeacon("/api/conversations/save", blob);
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [portfolio.address]);
 
   // Sync latest data after each render for the transport body closure
   useEffect(() => {
@@ -112,6 +154,12 @@ export function ChatContainer({
     }
   };
 
+  const handleRetrySave = () => {
+    if (messages.length > 0) {
+      onConversationSaved(messages);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       {hasMessages ? (
@@ -124,10 +172,16 @@ export function ChatContainer({
             onSendMessage={handleSuggestionClick}
           />
           {saveError && (
-            <div className="text-center py-1.5 px-4">
+            <div className="text-center py-1.5 px-4 flex items-center justify-center gap-2">
               <p className="text-xs text-amber-400/80">
                 {saveError}
               </p>
+              <button
+                onClick={handleRetrySave}
+                className="text-xs text-amber-400 hover:text-amber-300 underline underline-offset-2"
+              >
+                Retry
+              </button>
             </div>
           )}
           <ChatInput

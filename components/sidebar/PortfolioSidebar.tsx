@@ -23,6 +23,10 @@ interface PortfolioSidebarProps {
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onNewChat: () => void;
+  isLoading?: boolean;
+  isListLoading?: boolean;
+  conversationError?: string | null;
+  onClearError?: () => void;
 }
 
 export function PortfolioSidebar({
@@ -38,6 +42,10 @@ export function PortfolioSidebar({
   onSelectConversation,
   onDeleteConversation,
   onNewChat,
+  isLoading,
+  isListLoading,
+  conversationError,
+  onClearError,
 }: PortfolioSidebarProps) {
   const { getTokenSymbol } = useTokenRegistry();
 
@@ -120,6 +128,10 @@ export function PortfolioSidebar({
           onSelect={onSelectConversation}
           onDelete={onDeleteConversation}
           onNewChat={onNewChat}
+          isLoading={isLoading}
+          isListLoading={isListLoading}
+          error={conversationError}
+          onClearError={onClearError}
         />
       ) : (
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">

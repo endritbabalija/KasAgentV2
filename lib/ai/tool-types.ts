@@ -53,6 +53,7 @@ export interface PrepareSwapTx {
   rawAmountIn: string;
   rawAmountOut: string;
   rawAmountOutMin: string;
+  rawAmountInMax: string;
   path: string[];
   deadline: string;
   value: string;

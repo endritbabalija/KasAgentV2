@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { UIMessage } from "ai";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useInfinityPoolData } from "@/hooks/useInfinityPoolData";
@@ -22,6 +22,8 @@ export default function Home() {
     activeConversationId,
     loadedMessages,
     activeTab,
+    isLoading,
+    isListLoading,
     chatLoadKey,
     setActiveTab,
     createNewChat,
@@ -29,7 +31,15 @@ export default function Home() {
     deleteConversation,
     saveConversation,
     saveError,
+    error,
+    clearError,
   } = useConversations(portfolio.address);
+
+  // Track ChatContainer's live messages so we can save before New Chat
+  const currentMessagesRef = useRef<UIMessage[]>([]);
+  const handleMessagesChange = useCallback((msgs: UIMessage[]) => {
+    currentMessagesRef.current = msgs;
+  }, []);
 
   const handleConversationSaved = useCallback(
     (messages: UIMessage[]) => {
@@ -37,6 +47,10 @@ export default function Home() {
     },
     [saveConversation]
   );
+
+  const handleNewChat = useCallback(() => {
+    createNewChat(currentMessagesRef.current);
+  }, [createNewChat]);
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0a] text-zinc-100">
@@ -59,7 +73,11 @@ export default function Home() {
           activeConversationId={activeConversationId}
           onSelectConversation={loadConversation}
           onDeleteConversation={deleteConversation}
-          onNewChat={createNewChat}
+          onNewChat={handleNewChat}
+          isLoading={isLoading}
+          isListLoading={isListLoading}
+          conversationError={error}
+          onClearError={clearError}
         />
 
         <main className="flex-1 overflow-hidden">
@@ -68,7 +86,9 @@ export default function Home() {
             portfolio={portfolio}
             pools={pools}
             initialMessages={loadedMessages}
+            activeConversationId={activeConversationId}
             onConversationSaved={handleConversationSaved}
+            onMessagesChange={handleMessagesChange}
             saveError={saveError}
           />
         </main>

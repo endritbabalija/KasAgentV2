@@ -1,7 +1,6 @@
 import type { TransactionHistoryResult, TransactionHistoryItem } from "@/lib/ai/tool-types";
 import { shortenAddress } from "./shared/ExecutionCardParts";
-
-const EXPLORER_URL = "https://explorer.kasplex.org";
+import { EXPLORER_URL } from "@/config/chains";
 
 function timeAgo(timestamp: string): string {
   if (!timestamp) return "-";

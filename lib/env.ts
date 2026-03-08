@@ -23,6 +23,8 @@ export const clientEnv = clientSchema.parse({
 const serverSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required"),
   EXPLORER_API_URL: z.string().url().default("https://explorer.kasplex.org/node-api/proxy/api/v2"),
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url().min(1, "NEXT_PUBLIC_SUPABASE_URL is required"),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
 });
 
 function getServerEnv() {
@@ -32,6 +34,8 @@ function getServerEnv() {
   return serverSchema.parse({
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     EXPLORER_API_URL: process.env.EXPLORER_API_URL,
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   });
 }
 

@@ -62,8 +62,8 @@ export function SwapExecutionCard({ data }: { data: PrepareSwapResult }) {
           abi: routerAbi,
           functionName: "swapTokensForExactKAS",
           args: [
-            BigInt(tx.rawAmountOutMin),
-            BigInt(tx.rawAmountIn),
+            BigInt(tx.rawAmountOut),
+            BigInt(tx.rawAmountInMax),
             path,
             address!,
             deadline,

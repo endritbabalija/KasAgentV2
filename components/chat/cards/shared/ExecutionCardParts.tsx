@@ -2,6 +2,7 @@
 
 import type { RiskFlag, RiskLevel, ContractInfo } from "@/lib/ai/tool-types";
 import { shortenAddress } from "@/lib/format";
+import { EXPLORER_URL } from "@/config/chains";
 import { useState } from "react";
 
 export { shortenAddress };
@@ -135,7 +136,7 @@ export function SuccessState({ message, txHash }: { message: string; txHash?: st
       </div>
       {txHash && (
         <a
-          href={`https://explorer.kasplex.org/tx/${txHash}`}
+          href={`${EXPLORER_URL}/tx/${txHash}`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-teal-400 hover:text-teal-300 underline break-all"

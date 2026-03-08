@@ -1,6 +1,8 @@
 import { defineChain } from "viem";
 import { clientEnv } from "@/lib/env";
 
+export const EXPLORER_URL = "https://explorer.kasplex.org";
+
 export const kasplexL2 = defineChain({
   id: 202555,
   name: "Kasplex L2",
@@ -17,7 +19,7 @@ export const kasplexL2 = defineChain({
   blockExplorers: {
     default: {
       name: "Kasplex Explorer",
-      url: "https://explorer.kasplex.org",
+      url: EXPLORER_URL,
     },
   },
   contracts: {

@@ -120,6 +120,10 @@ export const swapTools = {
 
         const rawAmountOut = amounts[amounts.length - 1];
         const rawAmountOutMin = calculateMinAmount(rawAmountOut, slippage);
+        const slippageBps = BigInt(Math.round(slippage * 100));
+        const rawAmountInMax = isNativeOut
+          ? rawAmountIn + (rawAmountIn * slippageBps) / 10000n
+          : rawAmountIn;
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
 
         // Check allowance for ERC-20 inputs
@@ -247,6 +251,7 @@ export const swapTools = {
             rawAmountIn: rawAmountIn.toString(),
             rawAmountOut: rawAmountOut.toString(),
             rawAmountOutMin: rawAmountOutMin.toString(),
+            rawAmountInMax: rawAmountInMax.toString(),
             path,
             deadline: deadline.toString(),
             value: isNativeIn ? rawAmountIn.toString() : "0",

@@ -17,27 +17,46 @@ export function useConversations(walletAddress: string | undefined) {
   const [loadedMessages, setLoadedMessages] = useState<UIMessage[]>([]);
   const [activeTab, setActiveTab] = useState<SidebarTab>("portfolio");
   const [isLoading, setIsLoading] = useState(false);
+  const [isListLoading, setIsListLoading] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   // Incremented only on user-initiated resets (new chat, load, delete active, wallet switch).
   // Used as React key on ChatContainer — changing it remounts the component.
   // saveConversation does NOT increment this, so saving won't reset the chat.
   const [chatLoadKey, setChatLoadKey] = useState(0);
+
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const showError = useCallback((msg: string) => {
+    setError(msg);
+    clearTimeout(errorTimerRef.current);
+    errorTimerRef.current = setTimeout(() => setError(null), 5000);
+  }, []);
+  const clearError = useCallback(() => {
+    setError(null);
+    clearTimeout(errorTimerRef.current);
+  }, []);
 
   const refreshConversations = useCallback(async () => {
     if (!walletAddress) {
       setConversations([]);
       return;
     }
+    setIsListLoading(true);
     try {
       const res = await fetch(`/api/conversations?wallet=${walletAddress}`);
       if (res.ok) {
         const data = await res.json();
         setConversations(data);
+      } else {
+        showError("Failed to load conversations");
       }
     } catch (err) {
       console.error("[useConversations] Failed to refresh conversations:", err);
+      showError("Failed to load conversations");
+    } finally {
+      setIsListLoading(false);
     }
-  }, [walletAddress]);
+  }, [walletAddress, showError]);
 
   // Fetch conversations when wallet connects/changes
   const hasAutoSwitchedRef = useRef(false);
@@ -75,12 +94,26 @@ export function useConversations(walletAddress: string | undefined) {
     }
   }, [walletAddress, conversations.length]);
 
-  const createNewChat = useCallback(() => {
+  const createNewChat = useCallback(async (currentMessages?: UIMessage[]) => {
+    // Persist in-progress conversation before resetting
+    if (currentMessages && currentMessages.length > 0 && walletAddress) {
+      try {
+        await fetch("/api/conversations/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletAddress,
+            conversationId: activeConversationId,
+            messages: currentMessages,
+          }),
+        });
+      } catch {}
+    }
     setActiveConversationId(null);
     setLoadedMessages([]);
     setSaveError(null);
     setChatLoadKey((k) => k + 1);
-  }, []);
+  }, [walletAddress, activeConversationId]);
 
   const loadConversation = useCallback(
     async (id: string) => {
@@ -102,14 +135,17 @@ export function useConversations(walletAddress: string | undefined) {
             }))
           );
           setChatLoadKey((k) => k + 1);
+        } else {
+          showError("Failed to load conversation");
         }
       } catch (err) {
         console.error("[useConversations] Failed to load conversation:", err);
+        showError("Failed to load conversation");
       } finally {
         setIsLoading(false);
       }
     },
-    [walletAddress]
+    [walletAddress, showError]
   );
 
   const deleteConversation = useCallback(
@@ -127,12 +163,15 @@ export function useConversations(walletAddress: string | undefined) {
             setLoadedMessages([]);
             setChatLoadKey((k) => k + 1);
           }
+        } else {
+          showError("Failed to delete conversation");
         }
       } catch (err) {
         console.error("[useConversations] Failed to delete conversation:", err);
+        showError("Failed to delete conversation");
       }
     },
-    [walletAddress, activeConversationId]
+    [walletAddress, activeConversationId, showError]
   );
 
   const saveConversation = useCallback(
@@ -176,9 +215,12 @@ export function useConversations(walletAddress: string | undefined) {
     loadedMessages,
     activeTab,
     isLoading,
+    isListLoading,
     chatLoadKey,
     saveError,
+    error,
     setActiveTab,
+    clearError,
     createNewChat,
     loadConversation,
     deleteConversation,
