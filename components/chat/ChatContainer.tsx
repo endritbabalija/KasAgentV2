@@ -19,31 +19,27 @@ import { WelcomeScreen } from "./WelcomeScreen";
 interface ChatContainerProps {
   portfolio: Portfolio;
   pools: InfinityPoolInfo[];
-  activeConversationId: string | null;
-  loadedMessages: UIMessage[];
-  chatResetKey: number;
+  initialMessages: UIMessage[];
   onConversationSaved: (messages: UIMessage[]) => void;
 }
+
+// This component is keyed by chatLoadKey in page.tsx.
+// Changing the key remounts it, which resets useChat with fresh initialMessages.
+// No manual reset effects needed.
 
 export function ChatContainer({
   portfolio,
   pools,
-  activeConversationId,
-  loadedMessages,
-  chatResetKey,
+  initialMessages,
   onConversationSaved,
 }: ChatContainerProps) {
   const { getTokenSymbol } = useTokenRegistry();
-
-  const prevAddressRef = useRef(portfolio.address);
 
   // Store latest serialized data in refs so the transport's body function
   // always reads fresh values without needing to recreate the transport.
   const portfolioRef = useRef<SerializedPortfolio | null>(null);
   const poolsRef = useRef<SerializedInfinityPool[]>([]);
 
-  // Create transport once — body closure reads refs lazily on user action, not during render.
-  /* eslint-disable react-hooks/refs -- refs are captured in a callback, not read during render */
   const [transport] = useState(
     () =>
       new DefaultChatTransport({
@@ -55,23 +51,16 @@ export function ChatContainer({
         }),
       })
   );
-  /* eslint-enable react-hooks/refs */
 
-  const { messages, status, error, stop, sendMessage, setMessages } = useChat({
+  const { messages, status, error, stop, sendMessage } = useChat({
     transport,
-    messages: loadedMessages,
+    messages: initialMessages,
     onFinish: ({ messages: allMessages }) => {
       onConversationSaved(allMessages);
     },
   });
 
-  // When conversation changes (load or new chat), reset messages.
-  // chatResetKey ensures "New Chat" clears even when activeConversationId stays null.
-  useEffect(() => {
-    setMessages(loadedMessages);
-  }, [activeConversationId, chatResetKey, loadedMessages, setMessages]);
-
-  // Sync refs after each render for closures (transport body)
+  // Sync refs after each render for the transport body closure
   useEffect(() => {
     portfolioRef.current =
       portfolio.isConnected && portfolio.address
@@ -87,17 +76,6 @@ export function ChatContainer({
         : null;
     poolsRef.current = serializeInfinityPools(pools);
   });
-
-  // Handle wallet switch / disconnect
-  useEffect(() => {
-    const prevAddress = prevAddressRef.current;
-    const newAddress = portfolio.address;
-    if (prevAddress === newAddress) return;
-
-    // Clear chat on wallet switch
-    setMessages([]);
-    prevAddressRef.current = newAddress;
-  }, [portfolio.address, setMessages]);
 
   const isLoading = status === "submitted" || status === "streaming";
   const isWaiting = status === "submitted";

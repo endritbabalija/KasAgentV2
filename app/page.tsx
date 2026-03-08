@@ -22,7 +22,7 @@ export default function Home() {
     activeConversationId,
     loadedMessages,
     activeTab,
-    chatResetKey,
+    chatLoadKey,
     setActiveTab,
     createNewChat,
     loadConversation,
@@ -63,11 +63,10 @@ export default function Home() {
 
         <main className="flex-1 overflow-hidden">
           <ChatContainer
+            key={chatLoadKey}
             portfolio={portfolio}
             pools={pools}
-            activeConversationId={activeConversationId}
-            loadedMessages={loadedMessages}
-            chatResetKey={chatResetKey}
+            initialMessages={loadedMessages}
             onConversationSaved={handleConversationSaved}
           />
         </main>

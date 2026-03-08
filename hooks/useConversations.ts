@@ -17,8 +17,10 @@ export function useConversations(walletAddress: string | undefined) {
   const [loadedMessages, setLoadedMessages] = useState<UIMessage[]>([]);
   const [activeTab, setActiveTab] = useState<SidebarTab>("portfolio");
   const [isLoading, setIsLoading] = useState(false);
-  // Counter to force chat reset even when activeConversationId stays null
-  const [chatResetKey, setChatResetKey] = useState(0);
+  // Incremented only on user-initiated resets (new chat, load, delete active, wallet switch).
+  // Used as React key on ChatContainer — changing it remounts the component.
+  // saveConversation does NOT increment this, so saving won't reset the chat.
+  const [chatLoadKey, setChatLoadKey] = useState(0);
 
   const refreshConversations = useCallback(async () => {
     if (!walletAddress) {
@@ -38,16 +40,29 @@ export function useConversations(walletAddress: string | undefined) {
 
   // Fetch conversations when wallet connects/changes
   const hasAutoSwitchedRef = useRef(false);
+  const prevWalletRef = useRef(walletAddress);
   useEffect(() => {
+    const walletChanged = prevWalletRef.current !== walletAddress;
+    prevWalletRef.current = walletAddress;
+
     if (walletAddress) {
       hasAutoSwitchedRef.current = false;
       refreshConversations();
+      if (walletChanged) {
+        // Wallet switched to a different address — reset chat
+        setActiveConversationId(null);
+        setLoadedMessages([]);
+        setChatLoadKey((k) => k + 1);
+      }
     } else {
       setConversations([]);
       setActiveConversationId(null);
       setLoadedMessages([]);
       setActiveTab("portfolio");
       hasAutoSwitchedRef.current = false;
+      if (walletChanged) {
+        setChatLoadKey((k) => k + 1);
+      }
     }
   }, [walletAddress, refreshConversations]);
 
@@ -62,7 +77,7 @@ export function useConversations(walletAddress: string | undefined) {
   const createNewChat = useCallback(() => {
     setActiveConversationId(null);
     setLoadedMessages([]);
-    setChatResetKey((k) => k + 1);
+    setChatLoadKey((k) => k + 1);
   }, []);
 
   const loadConversation = useCallback(
@@ -83,6 +98,7 @@ export function useConversations(walletAddress: string | undefined) {
               parts: m.parts,
             }))
           );
+          setChatLoadKey((k) => k + 1);
         }
       } catch {
         // silently fail
@@ -106,6 +122,7 @@ export function useConversations(walletAddress: string | undefined) {
           if (activeConversationId === id) {
             setActiveConversationId(null);
             setLoadedMessages([]);
+            setChatLoadKey((k) => k + 1);
           }
         }
       } catch {
@@ -134,7 +151,6 @@ export function useConversations(walletAddress: string | undefined) {
           if (!activeConversationId) {
             setActiveConversationId(newId);
           }
-          // Refresh the list to get updated titles/timestamps
           refreshConversations();
           return newId;
         }
@@ -152,7 +168,7 @@ export function useConversations(walletAddress: string | undefined) {
     loadedMessages,
     activeTab,
     isLoading,
-    chatResetKey,
+    chatLoadKey,
     setActiveTab,
     createNewChat,
     loadConversation,
