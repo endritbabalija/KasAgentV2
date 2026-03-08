@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import type { Portfolio } from "@/hooks/usePortfolio";
@@ -23,6 +23,31 @@ interface ChatContainerProps {
   onConversationSaved: (messages: UIMessage[]) => void;
 }
 
+/**
+ * Closure-based mutable store for the transport body.
+ * Mutations happen to closure-scoped variables, which avoids both
+ * react-hooks/refs (no useRef in render closures) and
+ * react-hooks/immutability (no property writes on useState values).
+ */
+function createBodyStore() {
+  let portfolio: SerializedPortfolio | null = null;
+  let pools: SerializedInfinityPool[] = [];
+
+  return {
+    update(p: SerializedPortfolio | null, pl: SerializedInfinityPool[]) {
+      portfolio = p;
+      pools = pl;
+    },
+    getBody() {
+      return {
+        walletAddress: portfolio?.address,
+        portfolio,
+        infinityPools: pools,
+      };
+    },
+  };
+}
+
 // This component is keyed by chatLoadKey in page.tsx.
 // Changing the key remounts it, which resets useChat with fresh initialMessages.
 // No manual reset effects needed.
@@ -35,20 +60,13 @@ export function ChatContainer({
 }: ChatContainerProps) {
   const { getTokenSymbol } = useTokenRegistry();
 
-  // Store latest serialized data in refs so the transport's body function
-  // always reads fresh values without needing to recreate the transport.
-  const portfolioRef = useRef<SerializedPortfolio | null>(null);
-  const poolsRef = useRef<SerializedInfinityPool[]>([]);
+  const [bodyStore] = useState(createBodyStore);
 
   const [transport] = useState(
     () =>
       new DefaultChatTransport({
         api: "/api/chat",
-        body: () => ({
-          walletAddress: portfolioRef.current?.address,
-          portfolio: portfolioRef.current,
-          infinityPools: poolsRef.current,
-        }),
+        body: bodyStore.getBody,
       })
   );
 
@@ -60,9 +78,9 @@ export function ChatContainer({
     },
   });
 
-  // Sync refs after each render for the transport body closure
+  // Sync latest data after each render for the transport body closure
   useEffect(() => {
-    portfolioRef.current =
+    bodyStore.update(
       portfolio.isConnected && portfolio.address
         ? serializePortfolio(
             portfolio.address,
@@ -73,8 +91,9 @@ export function ChatContainer({
             portfolio.stakingPositions,
             getTokenSymbol
           )
-        : null;
-    poolsRef.current = serializeInfinityPools(pools);
+        : null,
+      serializeInfinityPools(pools)
+    );
   });
 
   const isLoading = status === "submitted" || status === "streaming";
@@ -98,6 +117,7 @@ export function ChatContainer({
           <MessageList
             messages={messages}
             isWaiting={isWaiting}
+            isStreaming={status === "streaming"}
             error={error}
             onSendMessage={handleSuggestionClick}
           />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useCallback, useMemo } from "react";
 import type { UIMessage } from "ai";
 import { ChatMessage } from "./ChatMessage";
 import { QuickActions } from "./QuickActions";
@@ -9,6 +9,7 @@ import { getQuickActions, type QuickAction } from "@/lib/ai/quick-actions";
 interface MessageListProps {
   messages: UIMessage[];
   isWaiting: boolean;
+  isStreaming: boolean;
   error: Error | undefined;
   onSendMessage: (text: string) => void;
 }
@@ -16,13 +17,26 @@ interface MessageListProps {
 export function MessageList({
   messages,
   isWaiting,
+  isStreaming,
   error,
   onSendMessage,
 }: MessageListProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const userScrolledUp = useRef(false);
+
+  // Detect if user has scrolled away from the bottom
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    userScrolledUp.current = distanceFromBottom > 80;
+  }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!userScrolledUp.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, isWaiting, error]);
 
   // Extract quick actions from the last assistant message's tool parts
@@ -49,11 +63,21 @@ export function MessageList({
   }, [messages, isWaiting]);
 
   return (
-    <div className="flex-1 overflow-y-auto pt-6 pb-2">
+    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pt-6 pb-2">
       <div className="max-w-3xl mx-auto px-3 sm:px-4 space-y-4">
-      {messages.map((message) => (
-        <ChatMessage key={message.id} message={message} />
-      ))}
+      {messages.map((message, i) => {
+        const isLastAssistant =
+          message.role === "assistant" &&
+          i === messages.length - 1;
+        return (
+          <ChatMessage
+            key={message.id}
+            message={message}
+            isLastAssistant={isLastAssistant}
+            isStreaming={isStreaming}
+          />
+        );
+      })}
       {isWaiting && (
         <div className="flex justify-start">
           <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-2xl px-4 py-3">

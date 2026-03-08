@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
@@ -102,12 +103,14 @@ const components: Components = {
   hr: (props) => <hr className="border-zinc-700 my-4" {...props} />,
 };
 
-export function MarkdownRenderer({ content }: { content: string }) {
+const remarkPlugins = [remarkGfm];
+
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: { content: string }) {
   return (
     <div className="text-zinc-200 leading-relaxed">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
         {content}
       </ReactMarkdown>
     </div>
   );
-}
+});
