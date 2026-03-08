@@ -22,7 +22,6 @@ interface PortfolioSidebarProps {
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
-  onNewChat: () => void;
   isLoading?: boolean;
   isListLoading?: boolean;
   conversationError?: string | null;
@@ -41,13 +40,19 @@ export function PortfolioSidebar({
   activeConversationId,
   onSelectConversation,
   onDeleteConversation,
-  onNewChat,
   isLoading,
   isListLoading,
   conversationError,
   onClearError,
 }: PortfolioSidebarProps) {
   const { getTokenSymbol } = useTokenRegistry();
+
+  const handleSelectConversation = (id: string) => {
+    onSelectConversation(id);
+    if (window.innerWidth < 768) {
+      onClose();
+    }
+  };
 
   // Lock body scroll when mobile drawer is open
   useEffect(() => {
@@ -125,9 +130,8 @@ export function PortfolioSidebar({
         <ConversationList
           conversations={conversations}
           activeConversationId={activeConversationId}
-          onSelect={onSelectConversation}
+          onSelect={handleSelectConversation}
           onDelete={onDeleteConversation}
-          onNewChat={onNewChat}
           isLoading={isLoading}
           isListLoading={isListLoading}
           error={conversationError}

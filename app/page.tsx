@@ -73,7 +73,6 @@ export default function Home() {
           activeConversationId={activeConversationId}
           onSelectConversation={loadConversation}
           onDeleteConversation={deleteConversation}
-          onNewChat={handleNewChat}
           isLoading={isLoading}
           isListLoading={isListLoading}
           conversationError={error}

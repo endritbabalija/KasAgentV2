@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import type { ConversationSummary } from "@/hooks/useConversations";
 
 function formatRelativeTime(dateStr: string): string {
@@ -20,7 +20,6 @@ interface ConversationListProps {
   activeConversationId: string | null;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
-  onNewChat: () => void;
   isLoading?: boolean;
   isListLoading?: boolean;
   error?: string | null;
@@ -56,7 +55,6 @@ export function ConversationList({
   activeConversationId,
   onSelect,
   onDelete,
-  onNewChat,
   isLoading,
   isListLoading,
   error,
@@ -75,17 +73,6 @@ export function ConversationList({
 
   return (
     <div className="flex flex-col h-full">
-      {/* New Chat button */}
-      <div className="px-4 py-3">
-        <button
-          onClick={onNewChat}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Chat
-        </button>
-      </div>
-
       {/* Error banner */}
       {error && (
         <div className="mx-3 mb-2 px-3 py-2 bg-red-950/50 border border-red-800/50 rounded-lg flex items-center justify-between">
@@ -97,7 +84,7 @@ export function ConversationList({
       )}
 
       {/* Conversation list */}
-      <div className={`flex-1 overflow-y-auto px-3 pb-3 space-y-4 transition-opacity ${isLoading ? "opacity-60 pointer-events-none" : ""}`}>
+      <div className={`flex-1 overflow-y-auto px-3 py-3 space-y-4 transition-opacity ${isLoading ? "opacity-60 pointer-events-none" : ""}`}>
         {isListLoading && conversations.length === 0 ? (
           <div className="flex flex-col items-center py-8 gap-2">
             <div className="w-5 h-5 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
