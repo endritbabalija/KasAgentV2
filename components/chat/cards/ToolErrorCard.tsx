@@ -5,7 +5,7 @@ export function ToolErrorCard({ error, toolName }: { error: string; toolName: st
         <span>&#x26A0;</span>
         <span>{toolName} error</span>
       </div>
-      <p className="text-red-300/80 text-sm">{error}</p>
+      <p className="text-red-300/80 text-sm break-words">{error}</p>
     </div>
   );
 }

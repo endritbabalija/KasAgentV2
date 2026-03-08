@@ -53,11 +53,11 @@ export default function Home() {
   }, [createNewChat]);
 
   return (
-    <div className="h-screen flex flex-col bg-[#0a0a0a] text-zinc-100">
+    <div className="h-dvh flex flex-col bg-[#0a0a0a] text-zinc-100 overflow-hidden">
       <AppHeader
         portfolio={portfolio}
         onSidebarToggle={toggle}
-        isSidebarOpen={isOpen}
+        onNewChat={handleNewChat}
       />
 
       <div className="flex-1 flex overflow-hidden">

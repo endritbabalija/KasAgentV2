@@ -65,7 +65,7 @@ export function MessageList({
   }, [messages, isWaiting]);
 
   return (
-    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pt-6 pb-2">
+    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overflow-x-hidden pt-6 pb-2">
       <div className="max-w-3xl mx-auto px-3 sm:px-4 space-y-4">
       {messages.map((message, i) => {
         const isLastAssistant =

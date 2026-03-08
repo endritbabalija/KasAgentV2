@@ -197,27 +197,22 @@ export function ChatContainer({
       ) : (
         <div className="flex-1 flex flex-col">
           <div className="flex-1" />
-          <div className="flex flex-col items-center px-3 sm:px-4 pb-6">
-            <WelcomeScreen
-              isConnected={portfolio.isConnected}
-              onSuggestionClick={handleSuggestionClick}
-              hasBalances={portfolio.balances.length > 0}
-              hasPositions={
-                portfolio.lpPositions.length > 0 ||
-                portfolio.farmPositions.length > 0 ||
-                portfolio.stakingPositions.some((s) => s.xTokenBalance > 0n)
-              }
-            />
-            <div className="w-full max-w-2xl mt-6">
-              <ChatInput
-                onSubmit={handleSubmit}
-                onStop={stop}
-                isLoading={isLoading}
-                isConnected={portfolio.isConnected}
-              />
-            </div>
-          </div>
-          <div className="flex-[0.6]" />
+          <WelcomeScreen
+            isConnected={portfolio.isConnected}
+            onSuggestionClick={handleSuggestionClick}
+            hasBalances={portfolio.balances.length > 0}
+            hasPositions={
+              portfolio.lpPositions.length > 0 ||
+              portfolio.farmPositions.length > 0 ||
+              portfolio.stakingPositions.some((s) => s.xTokenBalance > 0n)
+            }
+          />
+          <ChatInput
+            onSubmit={handleSubmit}
+            onStop={stop}
+            isLoading={isLoading}
+            isConnected={portfolio.isConnected}
+          />
         </div>
       )}
     </div>

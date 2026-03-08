@@ -107,7 +107,7 @@ const remarkPlugins = [remarkGfm];
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: { content: string }) {
   return (
-    <div className="text-zinc-200 leading-relaxed">
+    <div className="text-zinc-200 leading-relaxed [overflow-wrap:anywhere]">
       <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
         {content}
       </ReactMarkdown>
