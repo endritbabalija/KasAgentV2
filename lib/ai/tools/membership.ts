@@ -3,15 +3,7 @@ import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
 import { membershipAbi, nftStakingAbi } from "@/config/abis";
 import { checkDiscountEligibility } from "@/lib/discount";
-import { client } from "./helpers";
-
-async function safeRead<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await fn();
-  } catch {
-    return fallback;
-  }
-}
+import { client, safeRead } from "./helpers";
 
 export const membershipTools = {
   getMembershipStatus: tool({

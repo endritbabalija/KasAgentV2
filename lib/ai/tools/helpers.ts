@@ -12,6 +12,14 @@ export { client };
 
 export { resolveTokenAddress, getTokenDecimals, addressToSymbol };
 
+export async function safeRead<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch {
+    return fallback;
+  }
+}
+
 export async function findBestPath(
   addressIn: `0x${string}`,
   addressOut: `0x${string}`,

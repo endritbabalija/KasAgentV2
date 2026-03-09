@@ -369,3 +369,48 @@ export interface MembershipStatusResult {
   nftStakingGlobals: NftStakingGlobalStats;
   error?: string;
 }
+
+// --- Spy Mode (Wallet Watching) types ---
+
+export interface SpyTokenBalance {
+  symbol: string;
+  balance: string;
+  address: string | null; // null for native KAS
+}
+
+export interface SpyLpPosition {
+  pairAddress: string;
+  pair: string; // "ZEAL/WKAS"
+  lpBalance: string;
+  token0Symbol: string;
+  token0Amount: string;
+  token1Symbol: string;
+  token1Amount: string;
+}
+
+export interface SpyFarmPosition {
+  pid: number;
+  lpTokenSymbol: string; // "ZEAL/WKAS LP"
+  stakedAmount: string;
+  pendingReward: string;
+  rewardToken: string;
+  canWithdraw: boolean;
+}
+
+export interface SpyStakingPosition {
+  pool: string; // "ZEAL" | "NACHO" | "KASPER"
+  xTokenBalance: string;
+  underlyingAmount: string;
+  exchangeRate: string;
+}
+
+export interface SpyPortfolioResult {
+  address: string;
+  balances: SpyTokenBalance[];
+  lpPositions: SpyLpPosition[];
+  farmPositions: SpyFarmPosition[];
+  stakingPositions: SpyStakingPosition[];
+  discountStatus: { isEligible: boolean; source: string };
+  fetchedAt: string;
+  error?: string;
+}

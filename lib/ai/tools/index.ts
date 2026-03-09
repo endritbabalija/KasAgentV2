@@ -5,6 +5,7 @@ import { stakingTools } from "./staking";
 import { yieldTools } from "./yield";
 import { historyTools } from "./history";
 import { membershipTools } from "./membership";
+import { spyTools } from "./spy";
 
 export const aiTools = {
   ...swapTools,
@@ -14,4 +15,5 @@ export const aiTools = {
   ...yieldTools,
   ...historyTools,
   ...membershipTools,
+  ...spyTools,
 };

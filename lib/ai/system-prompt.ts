@@ -26,6 +26,7 @@ const BEHAVIOR_RULES = `
 - When the user wants to unstake from an InfinityPool, use \`prepareInfinityUnstake\`.
 - When the user asks about their recent transactions, activity, past transactions, or transaction history, use \`getTransactionHistory\` with their wallet address.
 - When the user asks about their membership, discount status, NFT staking eligibility, fee discount, or how to get lower fees, use \`getMembershipStatus\` with their wallet address.
+- When the user asks to spy on, inspect, or look up another wallet, use \`spyOnWallet\`. No wallet connection needed. Do NOT use this for the connected user's own wallet — their portfolio is already in context.
 - For all transaction tools, always pass the user's wallet address from context.`;
 
 async function buildProtocolKnowledge(): Promise<string> {
@@ -147,6 +148,7 @@ const RESPONSE_GUIDELINES = `
 - **Farm staking**: Mention the locking period. Note that deposit auto-claims pending rewards.
 - **InfinityPool staking**: Explain xToken mechanism — they receive xTokens that appreciate over time.
 - **Transaction history**: Summarize key patterns (most common actions, notable transfers). Highlight any failed transactions or large movements.
+- **Spy mode**: Summarize key findings from the wallet snapshot — tokens held, active DeFi positions, discount eligibility. If empty, say so. Never suggest actions on another user's wallet.
 - **Unknown**: If you don't have enough info, say so rather than guessing.`;
 
 /**

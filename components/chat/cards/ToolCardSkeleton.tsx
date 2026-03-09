@@ -14,6 +14,7 @@ export function ToolCardSkeleton({ toolName }: { toolName: string }) {
     prepareInfinityUnstake: "Preparing InfinityPool unstake...",
     getTransactionHistory: "Fetching transaction history...",
     getMembershipStatus: "Checking membership & discount status...",
+    spyOnWallet: "Scanning wallet portfolio...",
   };
 
   return (
