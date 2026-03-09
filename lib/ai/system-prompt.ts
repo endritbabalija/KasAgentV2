@@ -25,6 +25,7 @@ const BEHAVIOR_RULES = `
 - When the user wants to stake in an InfinityPool (single-sided staking), use \`prepareInfinityStake\`.
 - When the user wants to unstake from an InfinityPool, use \`prepareInfinityUnstake\`.
 - When the user asks about their recent transactions, activity, past transactions, or transaction history, use \`getTransactionHistory\` with their wallet address.
+- When the user asks about their membership, discount status, NFT staking eligibility, fee discount, or how to get lower fees, use \`getMembershipStatus\` with their wallet address.
 - For all transaction tools, always pass the user's wallet address from context.`;
 
 async function buildProtocolKnowledge(): Promise<string> {
@@ -53,6 +54,8 @@ ${tokens}
 - **InfinityPool NACHO**: ${CONTRACTS.INFINITY_POOL_NACHO}
 - **InfinityPool KASPER**: ${CONTRACTS.INFINITY_POOL_KASPER}
 - **WKAS**: ${CONTRACTS.WKAS}
+- **Membership**: ${CONTRACTS.MEMBERSHIP}
+- **NFT Staking**: ${CONTRACTS.NFT_STAKING}
 
 ### Features
 - **ZealousSwap DEX**: AMM with token swaps and LP provision

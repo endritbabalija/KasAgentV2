@@ -13,6 +13,7 @@ export function ToolCardSkeleton({ toolName }: { toolName: string }) {
     prepareInfinityStake: "Preparing InfinityPool stake...",
     prepareInfinityUnstake: "Preparing InfinityPool unstake...",
     getTransactionHistory: "Fetching transaction history...",
+    getMembershipStatus: "Checking membership & discount status...",
   };
 
   return (

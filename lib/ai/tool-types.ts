@@ -334,3 +334,38 @@ export interface TransactionHistoryResult {
   hasMore: boolean;
   error?: string;
 }
+
+// --- Membership Status types ---
+
+export interface MembershipInfo {
+  isActive: boolean;
+  isLifetime: boolean;
+  expiresAt: string;
+  daysRemaining: number | null;
+}
+
+export interface NftStakingInfo {
+  stakedNFTCount: number;
+  totalPower: string;
+  minRequiredPower: string;
+  meetsMinPower: boolean;
+  hasStakedRequiredDays: boolean;
+  isQualified: boolean;
+  requiredStakingDays: number;
+}
+
+export interface NftStakingGlobalStats {
+  totalStakers: string;
+  totalNFTsStaked: string;
+  totalPowerStaked: string;
+}
+
+export interface MembershipStatusResult {
+  walletAddress: string;
+  discountEligible: boolean;
+  discountSource: string;
+  membership: MembershipInfo;
+  nftStaking: NftStakingInfo;
+  nftStakingGlobals: NftStakingGlobalStats;
+  error?: string;
+}

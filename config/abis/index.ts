@@ -9,3 +9,5 @@ export {
   infinityPoolKasperAbi,
 } from "./infinityPoolSimple";
 export { discountManagerAbi } from "./discountManager";
+export { membershipAbi } from "./membership";
+export { nftStakingAbi } from "./nftStaking";

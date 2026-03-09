@@ -4,6 +4,7 @@ import { farmTools } from "./farms";
 import { stakingTools } from "./staking";
 import { yieldTools } from "./yield";
 import { historyTools } from "./history";
+import { membershipTools } from "./membership";
 
 export const aiTools = {
   ...swapTools,
@@ -12,4 +13,5 @@ export const aiTools = {
   ...stakingTools,
   ...yieldTools,
   ...historyTools,
+  ...membershipTools,
 };
