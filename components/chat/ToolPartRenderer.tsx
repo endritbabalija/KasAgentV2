@@ -15,6 +15,7 @@ import { InfinityUnstakeCard } from "./cards/InfinityUnstakeCard";
 import { TransactionHistoryCard } from "./cards/TransactionHistoryCard";
 import { MembershipStatusCard } from "./cards/MembershipStatusCard";
 import { SpyPortfolioCard } from "./cards/SpyPortfolioCard";
+import { PriceCard } from "./cards/PriceCard";
 import type {
   SwapQuoteResult,
   PrepareSwapResult,
@@ -31,6 +32,7 @@ import type {
   TransactionHistoryResult,
   MembershipStatusResult,
   SpyPortfolioResult,
+  TokenPriceResult,
 } from "@/lib/ai/tool-types";
 
 interface ToolPart {
@@ -96,6 +98,8 @@ export function ToolPartRenderer({ part }: { part: ToolPart }) {
       return <MembershipStatusCard data={output as unknown as MembershipStatusResult} />;
     case "spyOnWallet":
       return <SpyPortfolioCard data={output as unknown as SpyPortfolioResult} />;
+    case "getTokenPrice":
+      return <PriceCard data={output as unknown as TokenPriceResult} />;
     default:
       // Fallback: render raw JSON for unknown tools
       return (

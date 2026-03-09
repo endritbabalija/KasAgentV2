@@ -6,6 +6,7 @@ import { yieldTools } from "./yield";
 import { historyTools } from "./history";
 import { membershipTools } from "./membership";
 import { spyTools } from "./spy";
+import { oracleTools } from "./oracle";
 
 export const aiTools = {
   ...swapTools,
@@ -16,4 +17,5 @@ export const aiTools = {
   ...historyTools,
   ...membershipTools,
   ...spyTools,
+  ...oracleTools,
 };

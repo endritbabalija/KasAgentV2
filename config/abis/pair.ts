@@ -10,4 +10,6 @@ export const pairAbi = parseAbi([
   "function symbol() view returns (string)",
   "function name() view returns (string)",
   "function approve(address spender, uint256 amount) returns (bool)",
+  "function price0CumulativeLast() view returns (uint256)",
+  "function price1CumulativeLast() view returns (uint256)",
 ]);

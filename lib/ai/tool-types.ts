@@ -370,6 +370,18 @@ export interface MembershipStatusResult {
   error?: string;
 }
 
+// --- Token Price types ---
+
+export interface TokenPriceResult {
+  token: string;
+  priceInKAS: string;
+  pairAddress: string;
+  liquidityKAS: string;
+  liquidityToken: string;
+  tokenDecimals: number;
+  error?: string;
+}
+
 // --- Spy Mode (Wallet Watching) types ---
 
 export interface SpyTokenBalance {
