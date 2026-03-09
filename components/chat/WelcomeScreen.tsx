@@ -3,31 +3,30 @@
 interface Suggestion {
   title: string;
   subtitle: string;
-  prompt: string;
 }
 
 const DEFAULT_SUGGESTIONS: Suggestion[] = [
-  { title: "Explore tokens", subtitle: "on Kasplex L2", prompt: "What can I do with my tokens?" },
-  { title: "Find yield", subtitle: "best opportunities", prompt: "Find the best yield opportunities" },
-  { title: "Portfolio overview", subtitle: "balances & positions", prompt: "Show me my portfolio summary" },
-  { title: "Learn staking", subtitle: "how it works", prompt: "How does staking work on ZealousSwap?" },
-  { title: "Swap tokens", subtitle: "find best routes", prompt: "What are the best swap routes?" },
+  { title: "How do I get started?", subtitle: "onboarding" },
+  { title: "What tokens are available?", subtitle: "discovery" },
+  { title: "How does staking work?", subtitle: "education" },
+  { title: "What yield opportunities exist?", subtitle: "explore" },
+  { title: "How do swaps work?", subtitle: "learn" },
 ];
 
 const POSITION_SUGGESTIONS: Suggestion[] = [
-  { title: "LP positions", subtitle: "check performance", prompt: "How are my LP positions doing?" },
-  { title: "Farm rewards", subtitle: "pending earnings", prompt: "Check my pending farm rewards" },
-  { title: "Find yield", subtitle: "best opportunities", prompt: "Find the best yield opportunities" },
-  { title: "Portfolio overview", subtitle: "balances & positions", prompt: "Show me my portfolio summary" },
-  { title: "Swap tokens", subtitle: "find best routes", prompt: "What are the best swap routes?" },
+  { title: "How are my LP positions doing?", subtitle: "track returns" },
+  { title: "Check my pending farm rewards", subtitle: "claim earnings" },
+  { title: "Find the best yield opportunities", subtitle: "optimize APR" },
+  { title: "What are the best swap routes?", subtitle: "trading" },
+  { title: "Show my portfolio summary", subtitle: "full overview" },
 ];
 
 const BALANCE_ONLY_SUGGESTIONS: Suggestion[] = [
-  { title: "Explore tokens", subtitle: "on Kasplex L2", prompt: "What can I do with my tokens?" },
-  { title: "Find yield", subtitle: "best opportunities", prompt: "Find the best yield opportunities" },
-  { title: "Portfolio overview", subtitle: "balances & positions", prompt: "Show me my portfolio summary" },
-  { title: "Swap tokens", subtitle: "find best routes", prompt: "What are the best swap routes?" },
-  { title: "Learn staking", subtitle: "how it works", prompt: "How does staking work on ZealousSwap?" },
+  { title: "Show my portfolio summary", subtitle: "see what you have" },
+  { title: "Find the best yield opportunities", subtitle: "put tokens to work" },
+  { title: "What are the best swap routes?", subtitle: "trading" },
+  { title: "How does staking work?", subtitle: "education" },
+  { title: "What pools can I provide liquidity to?", subtitle: "LP discovery" },
 ];
 
 function getSuggestions(hasBalances: boolean, hasPositions: boolean): Suggestion[] {
@@ -58,8 +57,8 @@ export function WelcomeScreen({
       <div className="flex gap-3 max-w-3xl mx-auto">
         {suggestions.map((s) => (
           <button
-            key={s.prompt}
-            onClick={() => onSuggestionClick(s.prompt)}
+            key={s.title}
+            onClick={() => onSuggestionClick(s.title)}
             className="shrink-0 w-[calc(50%-6px)] sm:w-auto sm:flex-1 sm:min-w-0 text-left px-4 py-3 bg-zinc-800/50 border border-zinc-700/50 rounded-2xl hover:bg-zinc-800 hover:border-zinc-600 transition-colors"
           >
             <span className="block text-sm font-medium text-zinc-200 truncate">{s.title}</span>
