@@ -13,7 +13,7 @@ import {
 } from "@/config/abis";
 import { getAllTokens, addressToSymbol } from "@/lib/token-registry";
 import { checkDiscountEligibility } from "@/lib/discount";
-import { client, safeRead } from "./helpers";
+import { client } from "./helpers";
 import type {
   SpyTokenBalance,
   SpyLpPosition,
@@ -21,6 +21,8 @@ import type {
   SpyStakingPosition,
   SpyPortfolioResult,
 } from "@/lib/ai/tool-types";
+
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
 
 const INFINITY_POOLS = [
   {
@@ -42,6 +44,11 @@ const INFINITY_POOLS = [
     xTokenFn: "xKasperToken" as const,
   },
 ] as const;
+
+/** Extract a successful multicall result or return a fallback. */
+function mcResult<T>(entry: { status: string; result?: unknown }, fallback: T): T {
+  return entry.status === "success" ? (entry.result as T) : fallback;
+}
 
 export const spyTools = {
   spyOnWallet: tool({
@@ -69,169 +76,152 @@ export const spyTools = {
       const addr = walletAddress as `0x${string}`;
 
       try {
-        // ── Phase A: Discovery ──
-        const [tokens, nativeBalance, pairsLength, activePools, ...xTokenAddresses] =
+        // ── Phase A: Discovery (4 parallel calls) ──
+        const [tokens, nativeBalance, pairsLengthRaw, activePoolsRaw] =
           await Promise.all([
             getAllTokens(),
-            safeRead(() => client.getBalance({ address: addr }), 0n),
-            safeRead(
-              () =>
-                client.readContract({
-                  address: CONTRACTS.FACTORY,
-                  abi: factoryAbi,
-                  functionName: "allPairsLength",
-                }) as Promise<bigint>,
-              0n
-            ),
-            safeRead(
-              () =>
-                client.readContract({
-                  address: CONTRACTS.MASTER_CHEF,
-                  abi: masterchefAbi,
-                  functionName: "getActivePools",
-                }) as Promise<bigint[]>,
-              [] as bigint[]
-            ),
-            ...INFINITY_POOLS.map((pool) =>
-              safeRead(
-                () =>
-                  client.readContract({
-                    address: pool.address,
-                    abi: pool.abi,
-                    functionName: pool.xTokenFn,
-                  }) as Promise<`0x${string}`>,
-                "0x0000000000000000000000000000000000000000" as `0x${string}`
-              )
-            ),
+            client.getBalance({ address: addr }).catch(() => 0n),
+            client
+              .readContract({
+                address: CONTRACTS.FACTORY,
+                abi: factoryAbi,
+                functionName: "allPairsLength",
+              })
+              .catch(() => 0n) as Promise<bigint>,
+            client
+              .readContract({
+                address: CONTRACTS.MASTER_CHEF,
+                abi: masterchefAbi,
+                functionName: "getActivePools",
+              })
+              .catch(() => [] as bigint[]) as Promise<bigint[]>,
           ]);
 
-        // Get all pair addresses
-        const pairAddresses = await Promise.all(
-          Array.from({ length: Number(pairsLength) }, (_, i) =>
-            safeRead(
-              () =>
-                client.readContract({
-                  address: CONTRACTS.FACTORY,
-                  abi: factoryAbi,
-                  functionName: "allPairs",
-                  args: [BigInt(i)],
-                }) as Promise<`0x${string}`>,
-              "0x0000000000000000000000000000000000000000" as `0x${string}`
-            )
-          )
-        );
-        const validPairs = pairAddresses.filter(
-          (a) => a !== "0x0000000000000000000000000000000000000000"
-        );
-
-        // ERC20 tokens (exclude native KAS)
+        const pairsLength = Number(pairsLengthRaw);
+        const activePools = activePoolsRaw;
         const erc20Tokens = tokens.filter((t) => t.address != null);
 
-        // ── Phase B: Batch reads ──
-        const [
-          tokenBalances,
-          pairBalances,
-          farmData,
-          xTokenBalances,
-          discount,
-        ] = await Promise.all([
-          // Token balances
-          Promise.all(
-            erc20Tokens.map((t) =>
-              safeRead(
-                () =>
-                  client.readContract({
-                    address: t.address as `0x${string}`,
-                    abi: erc20Abi,
-                    functionName: "balanceOf",
-                    args: [addr],
-                  }) as Promise<bigint>,
-                0n
-              )
-            )
-          ),
-          // LP balances
-          Promise.all(
-            validPairs.map((pairAddr) =>
-              safeRead(
-                () =>
-                  client.readContract({
-                    address: pairAddr,
-                    abi: pairAbi,
-                    functionName: "balanceOf",
-                    args: [addr],
-                  }) as Promise<bigint>,
-                0n
-              )
-            )
-          ),
-          // Farm data for each active pool
-          Promise.all(
-            activePools.map(async (pid) => {
-              const [userInfo, pending, canWithdrawResult] = await Promise.all([
-                safeRead(
-                  () =>
-                    client.readContract({
-                      address: CONTRACTS.MASTER_CHEF,
-                      abi: masterchefAbi,
-                      functionName: "userInfo",
-                      args: [pid, addr],
-                    }) as Promise<[bigint, bigint, bigint]>,
-                  [0n, 0n, 0n] as [bigint, bigint, bigint]
-                ),
-                safeRead(
-                  () =>
-                    client.readContract({
-                      address: CONTRACTS.MASTER_CHEF,
-                      abi: masterchefAbi,
-                      functionName: "pendingReward",
-                      args: [pid, addr],
-                    }) as Promise<bigint>,
-                  0n
-                ),
-                safeRead(
-                  () =>
-                    client.readContract({
-                      address: CONTRACTS.MASTER_CHEF,
-                      abi: masterchefAbi,
-                      functionName: "canWithdraw",
-                      args: [pid, addr],
-                    }) as Promise<boolean>,
-                  false
-                ),
-              ]);
-              return {
-                pid: Number(pid),
-                stakedAmount: userInfo[0],
-                pendingReward: pending,
-                canWithdraw: canWithdrawResult,
-              };
-            })
-          ),
-          // xToken balances
-          Promise.all(
-            xTokenAddresses.map((xAddr) =>
-              xAddr === "0x0000000000000000000000000000000000000000"
-                ? Promise.resolve(0n)
-                : safeRead(
-                    () =>
-                      client.readContract({
-                        address: xAddr,
-                        abi: erc20Abi,
-                        functionName: "balanceOf",
-                        args: [addr],
-                      }) as Promise<bigint>,
-                    0n
-                  )
-            )
-          ),
-          // Discount
+        // ── Multicall 1: Pair addresses + xToken addresses (single RPC) ──
+        const mc1Contracts = [
+          // allPairs(i) for each pair
+          ...Array.from({ length: pairsLength }, (_, i) => ({
+            address: CONTRACTS.FACTORY,
+            abi: factoryAbi,
+            functionName: "allPairs" as const,
+            args: [BigInt(i)],
+          })),
+          // xToken addresses for 3 InfinityPools
+          ...INFINITY_POOLS.map((pool) => ({
+            address: pool.address,
+            abi: pool.abi,
+            functionName: pool.xTokenFn,
+          })),
+        ];
+
+        const mc1 = mc1Contracts.length > 0
+          ? await client.multicall({ contracts: mc1Contracts, allowFailure: true })
+          : [];
+
+        const validPairs: `0x${string}`[] = [];
+        for (let i = 0; i < pairsLength; i++) {
+          const a = mcResult(mc1[i], ZERO_ADDR);
+          if (a !== ZERO_ADDR) validPairs.push(a);
+        }
+
+        const xTokenAddresses = INFINITY_POOLS.map((_, i) =>
+          mcResult(mc1[pairsLength + i], ZERO_ADDR)
+        );
+
+        // ── Multicall 2: ALL balance + farm reads (single RPC) ──
+        const mc2Contracts = [
+          // ERC20 token balances
+          ...erc20Tokens.map((t) => ({
+            address: t.address as `0x${string}`,
+            abi: erc20Abi,
+            functionName: "balanceOf" as const,
+            args: [addr] as const,
+          })),
+          // LP pair balances
+          ...validPairs.map((pairAddr) => ({
+            address: pairAddr,
+            abi: pairAbi,
+            functionName: "balanceOf" as const,
+            args: [addr] as const,
+          })),
+          // Farm reads: 3 calls per active pool (userInfo, pendingReward, canWithdraw)
+          ...activePools.flatMap((pid) => [
+            {
+              address: CONTRACTS.MASTER_CHEF,
+              abi: masterchefAbi,
+              functionName: "userInfo" as const,
+              args: [pid, addr] as const,
+            },
+            {
+              address: CONTRACTS.MASTER_CHEF,
+              abi: masterchefAbi,
+              functionName: "pendingReward" as const,
+              args: [pid, addr] as const,
+            },
+            {
+              address: CONTRACTS.MASTER_CHEF,
+              abi: masterchefAbi,
+              functionName: "canWithdraw" as const,
+              args: [pid, addr] as const,
+            },
+          ]),
+          // xToken balances (3 calls)
+          ...xTokenAddresses.map((xAddr) => ({
+            address: xAddr === ZERO_ADDR ? ZERO_ADDR : xAddr,
+            abi: erc20Abi,
+            functionName: "balanceOf" as const,
+            args: [addr] as const,
+          })),
+        ];
+
+        const [mc2, discount] = await Promise.all([
+          mc2Contracts.length > 0
+            ? client.multicall({ contracts: mc2Contracts, allowFailure: true })
+            : Promise.resolve([]),
           checkDiscountEligibility(walletAddress),
         ]);
 
-        // ── Phase C: Detail reads (only non-zero positions) ──
+        // Parse mc2 results by offset
+        let offset = 0;
 
-        // Build token balances result (include native KAS + non-zero ERC20)
+        // Token balances
+        const tokenBalances = erc20Tokens.map((_, i) =>
+          mcResult<bigint>(mc2[offset + i], 0n)
+        );
+        offset += erc20Tokens.length;
+
+        // LP balances
+        const pairBalances = validPairs.map((_, i) =>
+          mcResult<bigint>(mc2[offset + i], 0n)
+        );
+        offset += validPairs.length;
+
+        // Farm data
+        const farmData = activePools.map((pid, i) => {
+          const base = offset + i * 3;
+          const userInfo = mcResult<[bigint, bigint, bigint]>(
+            mc2[base],
+            [0n, 0n, 0n]
+          );
+          return {
+            pid: Number(pid),
+            stakedAmount: userInfo[0],
+            pendingReward: mcResult<bigint>(mc2[base + 1], 0n),
+            canWithdraw: mcResult<boolean>(mc2[base + 2], false),
+          };
+        });
+        offset += activePools.length * 3;
+
+        // xToken balances
+        const xTokenBalances = xTokenAddresses.map((xAddr, i) =>
+          xAddr === ZERO_ADDR ? 0n : mcResult<bigint>(mc2[offset + i], 0n)
+        );
+
+        // ── Build token balances result ──
         const balances: SpyTokenBalance[] = [];
         if (nativeBalance > 0n) {
           balances.push({
@@ -250,206 +240,159 @@ export const spyTools = {
           }
         }
 
-        // LP positions — detail reads for non-zero balances
-        const lpPositions: SpyLpPosition[] = [];
+        // ── Multicall 3: LP detail reads + farm detail reads + staking rates (single RPC) ──
         const nonZeroLpIndices = pairBalances
           .map((bal, i) => (bal > 0n ? i : -1))
           .filter((i) => i >= 0);
-
-        if (nonZeroLpIndices.length > 0) {
-          const lpDetails = await Promise.all(
-            nonZeroLpIndices.map(async (idx) => {
-              const pairAddr = validPairs[idx];
-              const balance = pairBalances[idx];
-              const [reserves, totalSupply, token0, token1] = await Promise.all(
-                [
-                  safeRead(
-                    () =>
-                      client.readContract({
-                        address: pairAddr,
-                        abi: pairAbi,
-                        functionName: "getReserves",
-                      }) as Promise<[bigint, bigint, number]>,
-                    [0n, 0n, 0] as [bigint, bigint, number]
-                  ),
-                  safeRead(
-                    () =>
-                      client.readContract({
-                        address: pairAddr,
-                        abi: pairAbi,
-                        functionName: "totalSupply",
-                      }) as Promise<bigint>,
-                    0n
-                  ),
-                  safeRead(
-                    () =>
-                      client.readContract({
-                        address: pairAddr,
-                        abi: pairAbi,
-                        functionName: "token0",
-                      }) as Promise<`0x${string}`>,
-                    "0x0000000000000000000000000000000000000000" as `0x${string}`
-                  ),
-                  safeRead(
-                    () =>
-                      client.readContract({
-                        address: pairAddr,
-                        abi: pairAbi,
-                        functionName: "token1",
-                      }) as Promise<`0x${string}`>,
-                    "0x0000000000000000000000000000000000000000" as `0x${string}`
-                  ),
-                ]
-              );
-
-              const [t0Sym, t1Sym] = await Promise.all([
-                addressToSymbol(token0),
-                addressToSymbol(token1),
-              ]);
-
-              const token0Amount =
-                totalSupply > 0n
-                  ? (reserves[0] * balance) / totalSupply
-                  : 0n;
-              const token1Amount =
-                totalSupply > 0n
-                  ? (reserves[1] * balance) / totalSupply
-                  : 0n;
-
-              return {
-                pairAddress: pairAddr,
-                pair: `${t0Sym}/${t1Sym}`,
-                lpBalance: formatEther(balance),
-                token0Symbol: t0Sym,
-                token0Amount: formatEther(token0Amount),
-                token1Symbol: t1Sym,
-                token1Amount: formatEther(token1Amount),
-              } satisfies SpyLpPosition;
-            })
-          );
-          lpPositions.push(...lpDetails);
-        }
-
-        // Farm positions — only non-zero staked
-        const farmPositions: SpyFarmPosition[] = [];
         const nonZeroFarms = farmData.filter((f) => f.stakedAmount > 0n);
+        const nonZeroStakingIndices = xTokenBalances
+          .map((bal, i) => (bal > 0n ? i : -1))
+          .filter((i) => i >= 0);
 
-        if (nonZeroFarms.length > 0) {
-          // Get reward token symbol once
-          const rewardTokenAddr = await safeRead(
-            () =>
-              client.readContract({
-                address: CONTRACTS.MASTER_CHEF,
-                abi: masterchefAbi,
-                functionName: "rewardToken",
-              }) as Promise<`0x${string}`>,
-            "0x0000000000000000000000000000000000000000" as `0x${string}`
-          );
-          const rewardTokenSymbol = await addressToSymbol(rewardTokenAddr);
-
-          // Get LP token info for each active farm with stakes
-          const farmDetails = await Promise.all(
-            nonZeroFarms.map(async (farm) => {
-              const poolInfo = await safeRead(
-                () =>
-                  client.readContract({
+        const mc3Contracts = [
+          // LP details: 4 calls per non-zero LP (getReserves, totalSupply, token0, token1)
+          ...nonZeroLpIndices.flatMap((idx) => {
+            const pairAddr = validPairs[idx];
+            return [
+              { address: pairAddr, abi: pairAbi, functionName: "getReserves" as const },
+              { address: pairAddr, abi: pairAbi, functionName: "totalSupply" as const },
+              { address: pairAddr, abi: pairAbi, functionName: "token0" as const },
+              { address: pairAddr, abi: pairAbi, functionName: "token1" as const },
+            ];
+          }),
+          // Farm details: rewardToken (1 call) + poolInfo per non-zero farm + token0/token1 per farm LP
+          ...(nonZeroFarms.length > 0
+            ? [
+                {
+                  address: CONTRACTS.MASTER_CHEF,
+                  abi: masterchefAbi,
+                  functionName: "rewardToken" as const,
+                },
+                ...nonZeroFarms.flatMap((farm) => [
+                  {
                     address: CONTRACTS.MASTER_CHEF,
                     abi: masterchefAbi,
-                    functionName: "poolInfo",
-                    args: [BigInt(farm.pid)],
-                  }) as Promise<
-                    [
-                      `0x${string}`,
-                      bigint,
-                      bigint,
-                      bigint,
-                      bigint,
-                      boolean,
-                      boolean,
-                    ]
-                  >,
-                [
-                  "0x0000000000000000000000000000000000000000" as `0x${string}`,
-                  0n,
-                  0n,
-                  0n,
-                  0n,
-                  false,
-                  false,
-                ] as [
-                  `0x${string}`,
-                  bigint,
-                  bigint,
-                  bigint,
-                  bigint,
-                  boolean,
-                  boolean,
-                ]
-              );
+                    functionName: "poolInfo" as const,
+                    args: [BigInt(farm.pid)] as const,
+                  },
+                ]),
+              ]
+            : []),
+          // Staking: exchange rate per non-zero pool
+          ...nonZeroStakingIndices.map((idx) => ({
+            address: INFINITY_POOLS[idx].address,
+            abi: INFINITY_POOLS[idx].abi,
+            functionName: "getExchangeRate" as const,
+          })),
+        ];
 
-              const lpToken = poolInfo[0];
-              // Try to resolve LP pair symbols
-              let lpSymbol = "LP";
-              try {
-                const [t0, t1] = await Promise.all([
-                  client.readContract({
-                    address: lpToken,
-                    abi: pairAbi,
-                    functionName: "token0",
-                  }) as Promise<`0x${string}`>,
-                  client.readContract({
-                    address: lpToken,
-                    abi: pairAbi,
-                    functionName: "token1",
-                  }) as Promise<`0x${string}`>,
-                ]);
-                const [s0, s1] = await Promise.all([
-                  addressToSymbol(t0),
-                  addressToSymbol(t1),
-                ]);
-                lpSymbol = `${s0}/${s1} LP`;
-              } catch {
-                // Not a pair LP token, use generic label
-              }
+        const mc3 = mc3Contracts.length > 0
+          ? await client.multicall({ contracts: mc3Contracts, allowFailure: true })
+          : [];
 
-              return {
-                pid: farm.pid,
-                lpTokenSymbol: lpSymbol,
-                stakedAmount: formatEther(farm.stakedAmount),
-                pendingReward: formatEther(farm.pendingReward),
-                rewardToken: rewardTokenSymbol,
-                canWithdraw: farm.canWithdraw,
-              } satisfies SpyFarmPosition;
-            })
-          );
-          farmPositions.push(...farmDetails);
+        let mc3Offset = 0;
+
+        // Parse LP positions
+        const lpPositions: SpyLpPosition[] = [];
+        for (const idx of nonZeroLpIndices) {
+          const pairAddr = validPairs[idx];
+          const balance = pairBalances[idx];
+          const base = mc3Offset;
+          mc3Offset += 4;
+
+          const reserves = mcResult<[bigint, bigint, number]>(mc3[base], [0n, 0n, 0]);
+          const totalSupply = mcResult<bigint>(mc3[base + 1], 0n);
+          const token0 = mcResult<`0x${string}`>(mc3[base + 2], ZERO_ADDR);
+          const token1 = mcResult<`0x${string}`>(mc3[base + 3], ZERO_ADDR);
+
+          const [t0Sym, t1Sym] = await Promise.all([
+            addressToSymbol(token0),
+            addressToSymbol(token1),
+          ]);
+
+          const token0Amount =
+            totalSupply > 0n ? (reserves[0] * balance) / totalSupply : 0n;
+          const token1Amount =
+            totalSupply > 0n ? (reserves[1] * balance) / totalSupply : 0n;
+
+          lpPositions.push({
+            pairAddress: pairAddr,
+            pair: `${t0Sym}/${t1Sym}`,
+            lpBalance: formatEther(balance),
+            token0Symbol: t0Sym,
+            token0Amount: formatEther(token0Amount),
+            token1Symbol: t1Sym,
+            token1Amount: formatEther(token1Amount),
+          });
         }
 
-        // Staking positions — only non-zero xToken balances
-        const stakingPositions: SpyStakingPosition[] = [];
-        for (let i = 0; i < INFINITY_POOLS.length; i++) {
-          if (xTokenBalances[i] > 0n) {
-            const pool = INFINITY_POOLS[i];
-            const exchangeRate = await safeRead(
-              () =>
-                client.readContract({
-                  address: pool.address,
-                  abi: pool.abi,
-                  functionName: "getExchangeRate",
-                }) as Promise<bigint>,
-              BigInt(1e18)
-            );
+        // Parse farm positions
+        const farmPositions: SpyFarmPosition[] = [];
+        if (nonZeroFarms.length > 0) {
+          const rewardTokenAddr = mcResult<`0x${string}`>(mc3[mc3Offset], ZERO_ADDR);
+          mc3Offset += 1;
+          const rewardTokenSymbol = await addressToSymbol(rewardTokenAddr);
 
-            const underlyingAmount =
-              (xTokenBalances[i] * exchangeRate) / BigInt(1e18);
+          // Get poolInfo for each farm, then resolve LP symbols
+          const poolInfos = nonZeroFarms.map((_, i) => {
+            const info = mcResult<
+              [`0x${string}`, bigint, bigint, bigint, bigint, boolean, boolean]
+            >(mc3[mc3Offset + i], [ZERO_ADDR, 0n, 0n, 0n, 0n, false, false]);
+            return info;
+          });
+          mc3Offset += nonZeroFarms.length;
 
-            stakingPositions.push({
-              pool: pool.name,
-              xTokenBalance: formatEther(xTokenBalances[i]),
-              underlyingAmount: formatEther(underlyingAmount),
-              exchangeRate: formatEther(exchangeRate),
+          // Multicall 4: resolve LP pair symbols (token0 + token1 per farm LP)
+          const mc4Contracts = poolInfos.flatMap((info) => [
+            { address: info[0], abi: pairAbi, functionName: "token0" as const },
+            { address: info[0], abi: pairAbi, functionName: "token1" as const },
+          ]);
+
+          const mc4 = mc4Contracts.length > 0
+            ? await client.multicall({ contracts: mc4Contracts, allowFailure: true })
+            : [];
+
+          for (let i = 0; i < nonZeroFarms.length; i++) {
+            const farm = nonZeroFarms[i];
+            const t0 = mcResult<`0x${string}`>(mc4[i * 2], ZERO_ADDR);
+            const t1 = mcResult<`0x${string}`>(mc4[i * 2 + 1], ZERO_ADDR);
+
+            let lpSymbol = "LP";
+            if (t0 !== ZERO_ADDR && t1 !== ZERO_ADDR) {
+              const [s0, s1] = await Promise.all([
+                addressToSymbol(t0),
+                addressToSymbol(t1),
+              ]);
+              lpSymbol = `${s0}/${s1} LP`;
+            }
+
+            farmPositions.push({
+              pid: farm.pid,
+              lpTokenSymbol: lpSymbol,
+              stakedAmount: formatEther(farm.stakedAmount),
+              pendingReward: formatEther(farm.pendingReward),
+              rewardToken: rewardTokenSymbol,
+              canWithdraw: farm.canWithdraw,
             });
           }
+        }
+
+        // Parse staking positions
+        const stakingPositions: SpyStakingPosition[] = [];
+        for (const idx of nonZeroStakingIndices) {
+          const pool = INFINITY_POOLS[idx];
+          const exchangeRate = mcResult<bigint>(mc3[mc3Offset], BigInt(1e18));
+          mc3Offset += 1;
+
+          const underlyingAmount =
+            (xTokenBalances[idx] * exchangeRate) / BigInt(1e18);
+
+          stakingPositions.push({
+            pool: pool.name,
+            xTokenBalance: formatEther(xTokenBalances[idx]),
+            underlyingAmount: formatEther(underlyingAmount),
+            exchangeRate: formatEther(exchangeRate),
+          });
         }
 
         return {
