@@ -6,6 +6,7 @@ import {
   factoryAbi,
   pairAbi,
 } from "@/config/abis";
+import { checkDiscountEligibility } from "@/lib/discount";
 import type { RiskFlag, ContractInfo } from "../tool-types";
 import {
   client,
@@ -32,8 +33,12 @@ export const swapTools = {
       amountIn: z
         .string()
         .describe("Amount of input token in human-readable form (e.g. '10')"),
+      walletAddress: z
+        .string()
+        .optional()
+        .describe("User wallet address for discount-aware quotes"),
     }),
-    execute: async ({ tokenIn, tokenOut, amountIn }) => {
+    execute: async ({ tokenIn, tokenOut, amountIn, walletAddress }) => {
       const addressIn = await resolveTokenAddress(tokenIn);
       const addressOut = await resolveTokenAddress(tokenOut);
       if (!addressIn || !addressOut) {
@@ -50,7 +55,11 @@ export const swapTools = {
       const rawAmount = parseUnits(amountIn, decimalsIn);
 
       try {
-        const { path, amounts } = await findBestPath(addressIn, addressOut, rawAmount);
+        const discount = walletAddress
+          ? await checkDiscountEligibility(walletAddress)
+          : { isEligible: false, source: "None" };
+
+        const { path, amounts } = await findBestPath(addressIn, addressOut, rawAmount, discount.isEligible);
         const amountOut = amounts[amounts.length - 1];
         const isMultiHop = path.length > 2;
 
@@ -115,15 +124,16 @@ export const swapTools = {
         isNativeIn ? "KAS_TO_TOKEN" : isNativeOut ? "TOKEN_TO_KAS" : "TOKEN_TO_TOKEN";
 
       try {
-        const { path, amounts } = await findBestPath(addressIn, addressOut, rawAmountIn);
+        // Check discount eligibility for connected wallet
+        const discount = walletAddress
+          ? await checkDiscountEligibility(walletAddress)
+          : { isEligible: false, source: "None" };
+
+        const { path, amounts } = await findBestPath(addressIn, addressOut, rawAmountIn, discount.isEligible);
         const isMultiHop = path.length > 2;
 
         const rawAmountOut = amounts[amounts.length - 1];
         const rawAmountOutMin = calculateMinAmount(rawAmountOut, slippage);
-        const slippageBps = BigInt(Math.round(slippage * 100));
-        const rawAmountInMax = isNativeOut
-          ? rawAmountIn + (rawAmountIn * slippageBps) / 10000n
-          : rawAmountIn;
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
 
         // Check allowance for ERC-20 inputs
@@ -149,9 +159,9 @@ export const swapTools = {
         // Gas estimation (multi-hop uses more gas)
         const gasEstimate = await estimateGasCost(isMultiHop ? 250000n : 150000n, isMultiHop ? "0.035" : "0.0214");
 
-        // DEX fee — 0.3% per hop
+        // DEX fee — 0.3% standard, 0.2% for discount-eligible users
         const parsedAmountIn = parseFloat(amountIn);
-        const feePerHop = 0.003;
+        const feePerHop = discount.isEligible ? 0.002 : 0.003;
         const hops = path.length - 1;
         const totalFeePct = (1 - Math.pow(1 - feePerHop, hops)) * 100;
         const feeAmount = isNaN(parsedAmountIn) ? 0 : parsedAmountIn * (1 - Math.pow(1 - feePerHop, hops));
@@ -219,7 +229,7 @@ export const swapTools = {
         // Contract interaction info
         const contractInfoMap: Record<string, { functionName: string; description: string }> = {
           KAS_TO_TOKEN: { functionName: "swapExactKASForTokens", description: "Swap exact KAS for tokens via ZealousSwap Router" },
-          TOKEN_TO_KAS: { functionName: "swapTokensForExactKAS", description: "Swap tokens for KAS via ZealousSwap Router" },
+          TOKEN_TO_KAS: { functionName: "swapExactTokensForKAS", description: "Swap exact tokens for KAS via ZealousSwap Router" },
           TOKEN_TO_TOKEN: { functionName: "swapExactTokensForTokens", description: "Swap tokens for tokens via ZealousSwap Router" },
         };
         const contractInfo: ContractInfo = {
@@ -238,6 +248,9 @@ export const swapTools = {
           dexFee: totalFeePct.toFixed(2),
           gasEstimate,
           dexFeeAmount,
+          feeRate: discount.isEligible ? "0.20%" : "0.30%",
+          discountApplied: discount.isEligible,
+          discountSource: discount.source,
           riskFlags,
           contractInfo,
           swapType,
@@ -251,7 +264,6 @@ export const swapTools = {
             rawAmountIn: rawAmountIn.toString(),
             rawAmountOut: rawAmountOut.toString(),
             rawAmountOutMin: rawAmountOutMin.toString(),
-            rawAmountInMax: rawAmountInMax.toString(),
             path,
             deadline: deadline.toString(),
             value: isNativeIn ? rawAmountIn.toString() : "0",

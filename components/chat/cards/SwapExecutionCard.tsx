@@ -60,10 +60,10 @@ export function SwapExecutionCard({ data }: { data: PrepareSwapResult }) {
         hash = await writeSwapAsync({
           address: tx.router as `0x${string}`,
           abi: routerAbi,
-          functionName: "swapTokensForExactKAS",
+          functionName: "swapExactTokensForKAS",
           args: [
-            BigInt(tx.rawAmountOut),
-            BigInt(tx.rawAmountInMax),
+            BigInt(tx.rawAmountIn),
+            BigInt(tx.rawAmountOutMin),
             path,
             address!,
             deadline,
@@ -133,7 +133,7 @@ export function SwapExecutionCard({ data }: { data: PrepareSwapResult }) {
 
       {/* Fee & Output breakdown */}
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-        <DetailRow label="DEX Fee" value={`${data.dexFeeAmount} (${data.dexFee}%)`} />
+        <DetailRow label="DEX Fee" value={`${data.dexFeeAmount} (${data.feeRate})${data.discountApplied ? " — Discounted" : ""}`} />
         <DetailRow label="Gas Fee" value={`~${formatAmount(data.gasEstimate)} KAS`} />
         <DetailRow label="Min Received" value={`${formatAmount(data.amountOutMin)} ${data.tokenOut.toUpperCase()}`} />
         <DetailRow label="Slippage" value={`${data.slippage}%`} />

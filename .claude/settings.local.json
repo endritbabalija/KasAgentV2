@@ -26,7 +26,11 @@
       "mcp__plugin_supabase_supabase__get_project",
       "Bash(npx skillfish:*)",
       "Bash(npx skills:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(gh api:*)",
+      "Bash(__NEW_LINE_79c98250c457cfec__ echo:*)",
+      "Bash(__NEW_LINE_708385cc19e5af76__ echo:*)",
+      "Bash(__NEW_LINE_9d0aae9719df35db__ echo:*)"
     ]
   }
 }

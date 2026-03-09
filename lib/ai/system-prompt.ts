@@ -2,6 +2,7 @@ import type { SystemModelMessage } from "ai";
 import type { SerializedPortfolio, SerializedInfinityPool } from "./serializers";
 import { CONTRACTS } from "@/config/contracts";
 import { getAllTokens } from "@/lib/token-registry";
+import { checkDiscountEligibility, type DiscountStatus } from "@/lib/discount";
 
 const IDENTITY = `You are KasAgent, an AI DeFi copilot for the Kasplex L2 network. You help users understand their portfolio, find yield opportunities, and navigate the ZealousSwap DEX ecosystem. You are non-custodial — the user must approve all transactions in their own wallet.`;
 
@@ -58,18 +59,27 @@ ${tokens}
 - **Farms**: Stake LP tokens in MasterChef to earn reward tokens (ZEAL)
 - **InfinityPools**: Single-sided staking — stake ZEAL/NACHO/KASPER to earn more over time via exchange rate appreciation. ZEAL pool has emissions; NACHO and KASPER pools are fee-based.
 - **Yield Discovery**: Scans all farms and InfinityPools, computes APYs from on-chain data, assesses risks, and ranks opportunities.
-- For swaps involving native KAS, the router wraps/unwraps automatically via WKAS.`;
+- For swaps involving native KAS, the router wraps/unwraps automatically via WKAS.
+- **Fee Discounts**: Users with a ZealousSwap Membership, staked NACHO KAT NFTs, or xZEAL staking get 33% off swap fees (0.2% instead of 0.3%). Discount eligibility is checked automatically when preparing swaps.
+- **ZEAL Token**: 240M total supply. 42% yield/incentives (7-9yr distribution), 32% protocol security/dev, 16% team (2yr cliff + 2yr unlock), 10% airdrops. Utility: fee discounts, staking, governance, revenue sharing.`;
 }
 
 function buildWalletContext(
   portfolio: SerializedPortfolio | null,
-  infinityPools: SerializedInfinityPool[]
+  infinityPools: SerializedInfinityPool[],
+  discount?: DiscountStatus
 ): string {
   if (!portfolio) {
     return `\n## Wallet\nNo wallet connected.`;
   }
 
   let ctx = `\n## User Wallet: ${portfolio.address}`;
+
+  if (discount) {
+    ctx += discount.isEligible
+      ? `\nFee Discount: **Active** (source: ${discount.source}) — 0.2% swap fee instead of 0.3%`
+      : `\nFee Discount: Not eligible — standard 0.3% swap fee`;
+  }
 
   if (portfolio.balances.length > 0) {
     ctx += `\n\n### Token Balances\n| Token | Balance |\n|-------|--------|\n`;
@@ -155,6 +165,11 @@ export async function buildSystemPrompt(
     anthropic: { cacheControl: { type: "ephemeral" as const } },
   };
 
+  // Check discount eligibility for connected wallet
+  const discount = portfolio?.address
+    ? await checkDiscountEligibility(portfolio.address)
+    : undefined;
+
   return [
     // Block 1 — Static: never changes between requests or users
     {
@@ -168,10 +183,10 @@ export async function buildSystemPrompt(
       content: await buildProtocolKnowledge(),
       providerOptions: CACHE_BREAKPOINT,
     },
-    // Block 3 — Dynamic: per-user wallet balances & positions
+    // Block 3 — Dynamic: per-user wallet balances & positions + discount status
     {
       role: "system" as const,
-      content: buildWalletContext(portfolio, infinityPools),
+      content: buildWalletContext(portfolio, infinityPools, discount),
     },
   ];
 }

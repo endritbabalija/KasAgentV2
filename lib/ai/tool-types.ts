@@ -53,7 +53,6 @@ export interface PrepareSwapTx {
   rawAmountIn: string;
   rawAmountOut: string;
   rawAmountOutMin: string;
-  rawAmountInMax: string;
   path: string[];
   deadline: string;
   value: string;
@@ -76,6 +75,9 @@ export interface PrepareSwapResult {
   dexFee: string;
   gasEstimate: string;
   dexFeeAmount: string;
+  feeRate: string;
+  discountApplied: boolean;
+  discountSource: string;
   riskFlags: RiskFlag[];
   contractInfo: ContractInfo;
   swapType: "KAS_TO_TOKEN" | "TOKEN_TO_KAS" | "TOKEN_TO_TOKEN";

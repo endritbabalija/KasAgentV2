@@ -8,3 +8,4 @@ export {
   infinityPoolNachoAbi,
   infinityPoolKasperAbi,
 } from "./infinityPoolSimple";
+export { discountManagerAbi } from "./discountManager";

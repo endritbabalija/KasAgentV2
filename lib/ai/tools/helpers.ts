@@ -15,7 +15,8 @@ export { resolveTokenAddress, getTokenDecimals, addressToSymbol };
 export async function findBestPath(
   addressIn: `0x${string}`,
   addressOut: `0x${string}`,
-  rawAmountIn: bigint
+  rawAmountIn: bigint,
+  isDiscountEligible = false
 ): Promise<{ path: `0x${string}`[]; amounts: bigint[] }> {
   // Try direct path first
   try {
@@ -23,7 +24,7 @@ export async function findBestPath(
       address: CONTRACTS.ROUTER,
       abi: routerAbi,
       functionName: "getAmountsOut",
-      args: [rawAmountIn, [addressIn, addressOut], false],
+      args: [rawAmountIn, [addressIn, addressOut], isDiscountEligible],
     })) as bigint[];
     return { path: [addressIn, addressOut], amounts };
   } catch {
@@ -40,7 +41,7 @@ export async function findBestPath(
     address: CONTRACTS.ROUTER,
     abi: routerAbi,
     functionName: "getAmountsOut",
-    args: [rawAmountIn, [addressIn, wkas, addressOut], false],
+    args: [rawAmountIn, [addressIn, wkas, addressOut], isDiscountEligible],
   })) as bigint[];
   return { path: [addressIn, wkas, addressOut], amounts };
 }

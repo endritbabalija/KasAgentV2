@@ -191,3 +191,20 @@ This repository is the Phase 1 foundation.
 ## Reference
 
 - Product requirements: [PRD.md](./PRD.md)
+
+
+tldr:
+What it is: An AI-powered DeFi copilot for the Kasplex L2 blockchain. Users connect their EVM wallet and interact with ZealousSwap (a DEX) through natural language chat.
+
+  Core capabilities:
+  - Wallet-connected chat interface backed by Anthropic Claude with tool calls
+  - Portfolio aggregation — balances, LP positions, farm positions, InfinityPool staking
+  - AI can prepare/execute swaps, liquidity ops, farm staking, and InfinityPool staking via structured action cards
+  - Multi-hop swap routing (direct pair → WKAS intermediary fallback)
+  - Dynamic on-chain token discovery from Factory pairs (no hardcoded token list)
+  - Conversation persistence via Supabase, with a sidebar for browsing past chats
+  - Non-custodial — all transaction signing happens in the user's wallet
+
+  Tech stack: Next.js 16 + React 19 + TypeScript, wagmi/viem/RainbowKit, Tailwind CSS 4, Vercel AI SDK + Anthropic Claude, Supabase Postgres
+
+  Current state: Phase 1 MVP on Kasplex L2 mainnet (chain ID 202555), clean git status on master.
