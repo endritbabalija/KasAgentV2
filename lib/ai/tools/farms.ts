@@ -5,9 +5,11 @@ import { CONTRACTS } from "@/config/contracts";
 import {
   masterchefAbi,
   pairAbi,
+  erc20Abi,
 } from "@/config/abis";
 import type { RiskFlag, RiskLevel } from "../tool-types";
-import { client, estimateGasCost, checkAllowance, addressToSymbol } from "./helpers";
+import { client, estimateGasCost, addressToSymbol } from "./helpers";
+import { mcResult } from "@/lib/multicall";
 
 export const farmTools = {
   getActiveFarms: tool({
@@ -16,55 +18,48 @@ export const farmTools = {
     inputSchema: z.object({}),
     execute: async () => {
       try {
-        const [activePools, rewardPerBlock, totalAllocPoint, rewardToken] =
-          await Promise.all([
-            client.readContract({
-              address: CONTRACTS.MASTER_CHEF,
-              abi: masterchefAbi,
-              functionName: "getActivePools",
-            }),
-            client.readContract({
-              address: CONTRACTS.MASTER_CHEF,
-              abi: masterchefAbi,
-              functionName: "rewardPerBlock",
-            }),
-            client.readContract({
-              address: CONTRACTS.MASTER_CHEF,
-              abi: masterchefAbi,
-              functionName: "totalAllocPoint",
-            }),
-            client.readContract({
-              address: CONTRACTS.MASTER_CHEF,
-              abi: masterchefAbi,
-              functionName: "rewardToken",
-            }),
-          ]);
+        // Multicall 1: all MasterChef globals
+        const mc1 = await client.multicall({
+          contracts: [
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "getActivePools" as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardPerBlock" as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "totalAllocPoint" as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardToken" as const },
+          ],
+          allowFailure: true,
+        });
 
-        const poolIds = (activePools as bigint[]).map(Number);
-        const poolInfos = await Promise.all(
-          poolIds.map((pid) =>
-            client.readContract({
-              address: CONTRACTS.MASTER_CHEF,
-              abi: masterchefAbi,
-              functionName: "getPoolInfo",
-              args: [BigInt(pid)],
+        const activePools = mcResult<bigint[]>(mc1[0], []);
+        const rewardPerBlock = mcResult<bigint>(mc1[1], 0n);
+        const totalAllocPoint = mcResult<bigint>(mc1[2], 0n);
+        const rewardToken = mcResult<string>(mc1[3], "");
+
+        const poolIds = activePools.map(Number);
+
+        // Multicall 2: getPoolInfo per pool
+        const mc2 = poolIds.length > 0
+          ? await client.multicall({
+              contracts: poolIds.map((pid) => ({
+                address: CONTRACTS.MASTER_CHEF,
+                abi: masterchefAbi,
+                functionName: "getPoolInfo" as const,
+                args: [BigInt(pid)] as const,
+              })),
+              allowFailure: true,
             })
+          : [];
+
+        const poolInfos = mc2.map((r) =>
+          mcResult<readonly [string, bigint, bigint, bigint, bigint, boolean, boolean, bigint]>(
+            r,
+            ["0x0000000000000000000000000000000000000000", 0n, 0n, 0n, 0n, false, false, 0n]
           )
         );
 
-        const rewardTokenSymbol = await addressToSymbol(rewardToken as string);
+        const rewardTokenSymbol = await addressToSymbol(rewardToken);
 
         const farms = poolIds.map((pid, i) => {
-          const info = poolInfos[i] as readonly [
-            string,
-            bigint,
-            bigint,
-            bigint,
-            bigint,
-            boolean,
-            boolean,
-            bigint,
-          ];
+          const info = poolInfos[i];
           return {
             pid,
             lpToken: info[0],
@@ -77,8 +72,8 @@ export const farmTools = {
 
         return {
           rewardToken: rewardTokenSymbol,
-          rewardPerBlock: formatUnits(rewardPerBlock as bigint, 18),
-          totalAllocPoint: (totalAllocPoint as bigint).toString(),
+          rewardPerBlock: formatUnits(rewardPerBlock, 18),
+          totalAllocPoint: totalAllocPoint.toString(),
           farms,
         };
       } catch (e) {
@@ -102,12 +97,22 @@ export const farmTools = {
         const rawAmount = parseUnits(amount, 18);
         const bigPid = BigInt(pid);
 
-        const poolInfo = (await client.readContract({
-          address: CONTRACTS.MASTER_CHEF,
-          abi: masterchefAbi,
-          functionName: "getPoolInfo",
-          args: [bigPid],
-        })) as readonly [string, bigint, bigint, bigint, bigint, boolean, boolean, bigint];
+        // Multicall 1: pool info + masterchef globals
+        const stakeMc1 = await client.multicall({
+          contracts: [
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "getPoolInfo" as const, args: [bigPid] as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "lockingPeriod" as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardToken" as const },
+          ],
+          allowFailure: true,
+        });
+
+        const poolInfo = mcResult<readonly [string, bigint, bigint, bigint, bigint, boolean, boolean, bigint]>(
+          stakeMc1[0],
+          ["0x0000000000000000000000000000000000000000", 0n, 0n, 0n, 0n, false, false, 0n]
+        );
+        const lockingPeriod = mcResult<bigint>(stakeMc1[1], 0n);
+        const rewardToken = mcResult<string>(stakeMc1[2], "");
 
         const lpToken = poolInfo[0] as `0x${string}`;
         const isActive = poolInfo[5];
@@ -115,65 +120,50 @@ export const farmTools = {
           return { error: `Farm pool ${pid} is not active` };
         }
 
-        const [lockingPeriod, rewardToken] = await Promise.all([
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "lockingPeriod" }),
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardToken" }),
-        ]);
+        const rewardTokenSymbol = await addressToSymbol(rewardToken);
 
-        const rewardTokenSymbol = await addressToSymbol(rewardToken as string);
+        // Multicall 2: LP pair symbols + user info + allowance (all in one batch)
+        const stakeMc2Contracts = [
+          { address: lpToken, abi: pairAbi, functionName: "token0" as const },
+          { address: lpToken, abi: pairAbi, functionName: "token1" as const },
+          ...(walletAddress ? [
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "userInfo" as const, args: [bigPid, walletAddress as `0x${string}`] as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "pendingReward" as const, args: [bigPid, walletAddress as `0x${string}`] as const },
+            { address: lpToken, abi: erc20Abi, functionName: "allowance" as const, args: [walletAddress as `0x${string}`, CONTRACTS.MASTER_CHEF] as const },
+          ] : []),
+        ];
 
-        // Get pair symbols for LP token label
+        const stakeMc2 = await client.multicall({
+          contracts: stakeMc2Contracts,
+          allowFailure: true,
+        });
+
         let lpTokenSymbol = "LP";
         try {
-          const [t0, t1] = await Promise.all([
-            client.readContract({ address: lpToken, abi: pairAbi, functionName: "token0" }),
-            client.readContract({ address: lpToken, abi: pairAbi, functionName: "token1" }),
-          ]);
-          const [s0, s1] = await Promise.all([
-            addressToSymbol(t0 as string),
-            addressToSymbol(t1 as string),
-          ]);
-          lpTokenSymbol = `${s0}/${s1} LP`;
+          const t0 = mcResult<string>(stakeMc2[0], "");
+          const t1 = mcResult<string>(stakeMc2[1], "");
+          if (t0 && t1) {
+            const [s0, s1] = await Promise.all([addressToSymbol(t0), addressToSymbol(t1)]);
+            lpTokenSymbol = `${s0}/${s1} LP`;
+          }
         } catch { /* keep fallback */ }
 
-        // User info + pending rewards
         let existingStake = "0";
         let pendingRewards = "0";
-        if (walletAddress) {
-          const [userInfo, pending] = await Promise.all([
-            client.readContract({
-              address: CONTRACTS.MASTER_CHEF,
-              abi: masterchefAbi,
-              functionName: "userInfo",
-              args: [bigPid, walletAddress as `0x${string}`],
-            }),
-            client.readContract({
-              address: CONTRACTS.MASTER_CHEF,
-              abi: masterchefAbi,
-              functionName: "pendingReward",
-              args: [bigPid, walletAddress as `0x${string}`],
-            }),
-          ]);
-          const userAmount = (userInfo as [bigint, bigint, bigint])[0];
-          existingStake = formatUnits(userAmount, 18);
-          pendingRewards = formatUnits(pending as bigint, 18);
-        }
-
-        // Check LP allowance to MasterChef
         let needsApproval = false;
         let currentAllowance = "0";
         if (walletAddress) {
-          ({ needsApproval, currentAllowance } = await checkAllowance(
-            lpToken,
-            walletAddress as `0x${string}`,
-            CONTRACTS.MASTER_CHEF,
-            rawAmount
-          ));
+          const userInfo = mcResult<[bigint, bigint, bigint]>(stakeMc2[2], [0n, 0n, 0n]);
+          existingStake = formatUnits(userInfo[0], 18);
+          pendingRewards = formatUnits(mcResult<bigint>(stakeMc2[3], 0n), 18);
+          const allowance = mcResult<bigint>(stakeMc2[4], 0n);
+          needsApproval = allowance < rawAmount;
+          currentAllowance = allowance.toString();
         }
 
         const gasEstimate = await estimateGasCost(150000n, "0.02");
 
-        const lockingSeconds = Number(lockingPeriod as bigint);
+        const lockingSeconds = Number(lockingPeriod);
         const lockingHours = (lockingSeconds / 3600).toFixed(1);
 
         const riskFlags: RiskFlag[] = [
@@ -233,39 +223,52 @@ export const farmTools = {
       try {
         const bigPid = BigInt(pid);
 
-        const [poolInfo, userInfo, pending, canWithdrawResult, rewardToken, lockingPeriod] = await Promise.all([
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "getPoolInfo", args: [bigPid] }),
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "userInfo", args: [bigPid, walletAddress as `0x${string}`] }),
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "pendingReward", args: [bigPid, walletAddress as `0x${string}`] }),
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "canWithdraw", args: [bigPid, walletAddress as `0x${string}`] }),
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardToken" }),
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "lockingPeriod" }),
-        ]);
+        // Multicall: all farm unstake reads in one batch
+        const unstakeMc = await client.multicall({
+          contracts: [
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "getPoolInfo" as const, args: [bigPid] as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "userInfo" as const, args: [bigPid, walletAddress as `0x${string}`] as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "pendingReward" as const, args: [bigPid, walletAddress as `0x${string}`] as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "canWithdraw" as const, args: [bigPid, walletAddress as `0x${string}`] as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardToken" as const },
+            { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "lockingPeriod" as const },
+          ],
+          allowFailure: true,
+        });
 
-        const info = poolInfo as readonly [string, bigint, bigint, bigint, bigint, boolean, boolean, bigint];
+        const info = mcResult<readonly [string, bigint, bigint, bigint, bigint, boolean, boolean, bigint]>(
+          unstakeMc[0],
+          ["0x0000000000000000000000000000000000000000", 0n, 0n, 0n, 0n, false, false, 0n]
+        );
         const lpToken = info[0] as `0x${string}`;
-        const userStaked = (userInfo as [bigint, bigint, bigint])[0];
-        const pendingRewards = formatUnits(pending as bigint, 18);
-        const canWithdraw = canWithdrawResult as boolean;
+        const userStaked = mcResult<[bigint, bigint, bigint]>(unstakeMc[1], [0n, 0n, 0n])[0];
+        const pendingRewards = formatUnits(mcResult<bigint>(unstakeMc[2], 0n), 18);
+        const canWithdraw = mcResult<boolean>(unstakeMc[3], false);
 
         if (userStaked === 0n) {
           return { error: `You have no staked LP tokens in farm pool ${pid}` };
         }
 
-        const rewardTokenSymbol = await addressToSymbol(rewardToken as string);
+        const rewardToken = mcResult<string>(unstakeMc[4], "");
+        const lockingPeriod = mcResult<bigint>(unstakeMc[5], 0n);
+        const rewardTokenSymbol = await addressToSymbol(rewardToken);
 
-        // LP label
+        // LP label — multicall token0 + token1
         let lpTokenSymbol = "LP";
         try {
-          const [t0, t1] = await Promise.all([
-            client.readContract({ address: lpToken, abi: pairAbi, functionName: "token0" }),
-            client.readContract({ address: lpToken, abi: pairAbi, functionName: "token1" }),
-          ]);
-          const [s0, s1] = await Promise.all([
-            addressToSymbol(t0 as string),
-            addressToSymbol(t1 as string),
-          ]);
-          lpTokenSymbol = `${s0}/${s1} LP`;
+          const lpMc = await client.multicall({
+            contracts: [
+              { address: lpToken, abi: pairAbi, functionName: "token0" as const },
+              { address: lpToken, abi: pairAbi, functionName: "token1" as const },
+            ],
+            allowFailure: true,
+          });
+          const t0 = mcResult<string>(lpMc[0], "");
+          const t1 = mcResult<string>(lpMc[1], "");
+          if (t0 && t1) {
+            const [s0, s1] = await Promise.all([addressToSymbol(t0), addressToSymbol(t1)]);
+            lpTokenSymbol = `${s0}/${s1} LP`;
+          }
         } catch { /* keep fallback */ }
 
         const rawAmount = amount ? parseUnits(amount, 18) : userStaked;
@@ -274,7 +277,7 @@ export const farmTools = {
         }
 
         if (!canWithdraw) {
-          const lockSec = Number(lockingPeriod as bigint);
+          const lockSec = Number(lockingPeriod);
           return { error: `Cannot withdraw yet — locking period (${(lockSec / 3600).toFixed(1)} hours) has not elapsed since last deposit` };
         }
 

@@ -3,7 +3,6 @@ import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
 import {
-  factoryAbi,
   pairAbi,
   masterchefAbi,
   infinityPoolZealAbi,
@@ -15,20 +14,15 @@ import type {
   RiskFlag,
   RiskLevel,
 } from "../tool-types";
+import type { Token } from "@/config/tokens";
 import { client } from "./helpers";
-import { getAllTokens, addressToSymbol } from "@/lib/token-registry";
+import { getDiscoveryData, type PairDiscoveryData } from "@/lib/token-registry";
+import { mcResult } from "@/lib/multicall";
 
 const BLOCK_TIME_SECONDS = 2;
 const BLOCKS_PER_YEAR = (365.25 * 24 * 3600) / BLOCK_TIME_SECONDS;
 
-type PairData = {
-  address: `0x${string}`;
-  token0: string;
-  token1: string;
-  reserve0: bigint;
-  reserve1: bigint;
-  totalSupply: bigint;
-};
+type PairData = PairDiscoveryData & { totalSupply: bigint };
 
 type FarmData = {
   poolIds: number[];
@@ -50,102 +44,114 @@ function resolveOverallRisk(risks: RiskFlag[]): RiskLevel {
   return "low";
 }
 
-// ===== Fetch all on-chain data in parallel =====
-async function fetchOnChainData(): Promise<[PairData[], FarmData, InfinityData]> {
-  const pairsLength = (await client.readContract({
-    address: CONTRACTS.FACTORY,
-    abi: factoryAbi,
-    functionName: "allPairsLength",
-  })) as bigint;
+// ===== Fetch all on-chain data using shared discovery + multicall =====
+async function fetchOnChainData(): Promise<[PairData[], FarmData, InfinityData, Token[]]> {
+  // Reuse cached pair/token data from the shared registry (0 RPCs if warm)
+  const { tokens, pairs } = await getDiscoveryData();
 
-  const pairAddresses = await Promise.all(
-    Array.from({ length: Number(pairsLength) }, (_, i) =>
-      client.readContract({
-        address: CONTRACTS.FACTORY,
-        abi: factoryAbi,
-        functionName: "allPairs",
-        args: [BigInt(i)],
-      })
-    )
-  ) as `0x${string}`[];
+  // Multicall 1: yield-specific reads that the registry doesn't cache
+  // - totalSupply per pair (N specs)
+  // - MasterChef globals (4 specs)
+  // - InfinityPool reads (8 specs)
+  const mc1Contracts = [
+    // Per-pair totalSupply
+    ...pairs.map((p) => ({
+      address: p.address,
+      abi: pairAbi,
+      functionName: "totalSupply" as const,
+    })),
+    // MasterChef globals
+    { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "getActivePools" as const },
+    { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardPerBlock" as const },
+    { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "totalAllocPoint" as const },
+    { address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardToken" as const },
+    // InfinityPool reads
+    { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "getExchangeRate" as const },
+    { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "totalStaked" as const },
+    { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "zealPerBlock" as const },
+    { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "emissionsPaused" as const },
+    { address: CONTRACTS.INFINITY_POOL_NACHO, abi: infinityPoolNachoAbi, functionName: "getExchangeRate" as const },
+    { address: CONTRACTS.INFINITY_POOL_NACHO, abi: infinityPoolNachoAbi, functionName: "totalStaked" as const },
+    { address: CONTRACTS.INFINITY_POOL_KASPER, abi: infinityPoolKasperAbi, functionName: "getExchangeRate" as const },
+    { address: CONTRACTS.INFINITY_POOL_KASPER, abi: infinityPoolKasperAbi, functionName: "totalStaked" as const },
+  ];
 
-  return Promise.all([
-    Promise.all(
-      pairAddresses.map(async (addr) => {
-        const [token0, token1, reserves, totalSupply] = await Promise.all([
-          client.readContract({ address: addr, abi: pairAbi, functionName: "token0" }),
-          client.readContract({ address: addr, abi: pairAbi, functionName: "token1" }),
-          client.readContract({ address: addr, abi: pairAbi, functionName: "getReserves" }),
-          client.readContract({ address: addr, abi: pairAbi, functionName: "totalSupply" }),
-        ]);
-        const [r0, r1] = reserves as [bigint, bigint, number];
-        return {
-          address: addr,
-          token0: (token0 as string).toLowerCase(),
-          token1: (token1 as string).toLowerCase(),
-          reserve0: r0,
-          reserve1: r1,
-          totalSupply: totalSupply as bigint,
-        };
-      })
-    ),
-    (async (): Promise<FarmData> => {
-      const [activePools, rewardPerBlock, totalAllocPoint, rewardToken] =
-        await Promise.all([
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "getActivePools" }),
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardPerBlock" }),
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "totalAllocPoint" }),
-          client.readContract({ address: CONTRACTS.MASTER_CHEF, abi: masterchefAbi, functionName: "rewardToken" }),
-        ]);
-      const poolIds = (activePools as bigint[]).map(Number);
-      const poolInfos = await Promise.all(
-        poolIds.map((pid) =>
-          client.readContract({
-            address: CONTRACTS.MASTER_CHEF,
-            abi: masterchefAbi,
-            functionName: "getPoolInfo",
-            args: [BigInt(pid)],
-          })
-        )
-      );
-      return {
-        poolIds,
-        poolInfos: poolInfos as unknown as readonly [string, bigint, bigint, bigint, bigint, boolean, boolean, bigint][],
-        rewardPerBlock: rewardPerBlock as bigint,
-        totalAllocPoint: totalAllocPoint as bigint,
-        rewardToken: (rewardToken as string).toLowerCase(),
-      };
-    })(),
-    (async (): Promise<InfinityData> => {
-      const [zealRate, zealStaked, zealPerBlock, zealPaused, nachoRate, nachoStaked, kasperRate, kasperStaked] =
-        await Promise.all([
-          client.readContract({ address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "getExchangeRate" }),
-          client.readContract({ address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "totalStaked" }),
-          client.readContract({ address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "zealPerBlock" }),
-          client.readContract({ address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "emissionsPaused" }),
-          client.readContract({ address: CONTRACTS.INFINITY_POOL_NACHO, abi: infinityPoolNachoAbi, functionName: "getExchangeRate" }),
-          client.readContract({ address: CONTRACTS.INFINITY_POOL_NACHO, abi: infinityPoolNachoAbi, functionName: "totalStaked" }),
-          client.readContract({ address: CONTRACTS.INFINITY_POOL_KASPER, abi: infinityPoolKasperAbi, functionName: "getExchangeRate" }),
-          client.readContract({ address: CONTRACTS.INFINITY_POOL_KASPER, abi: infinityPoolKasperAbi, functionName: "totalStaked" }),
-        ]);
-      return {
-        zeal: { exchangeRate: zealRate as bigint, totalStaked: zealStaked as bigint, zealPerBlock: zealPerBlock as bigint, emissionsPaused: zealPaused as boolean },
-        nacho: { exchangeRate: nachoRate as bigint, totalStaked: nachoStaked as bigint },
-        kasper: { exchangeRate: kasperRate as bigint, totalStaked: kasperStaked as bigint },
-      };
-    })(),
-  ]);
+  const mc1 = await client.multicall({ contracts: mc1Contracts, allowFailure: true });
+
+  // Parse totalSupply per pair
+  const pairData: PairData[] = pairs.map((p, i) => ({
+    ...p,
+    totalSupply: mcResult<bigint>(mc1[i], 0n),
+  }));
+
+  // Parse MasterChef globals (offset = pairs.length)
+  let offset = pairs.length;
+  const activePools = mcResult<bigint[]>(mc1[offset], []);
+  const rewardPerBlock = mcResult<bigint>(mc1[offset + 1], 0n);
+  const totalAllocPoint = mcResult<bigint>(mc1[offset + 2], 0n);
+  const rewardToken = mcResult<string>(mc1[offset + 3], "").toLowerCase();
+  offset += 4;
+
+  // Parse InfinityPool reads
+  const infinityData: InfinityData = {
+    zeal: {
+      exchangeRate: mcResult<bigint>(mc1[offset], 0n),
+      totalStaked: mcResult<bigint>(mc1[offset + 1], 0n),
+      zealPerBlock: mcResult<bigint>(mc1[offset + 2], 0n),
+      emissionsPaused: mcResult<boolean>(mc1[offset + 3], false),
+    },
+    nacho: {
+      exchangeRate: mcResult<bigint>(mc1[offset + 4], 0n),
+      totalStaked: mcResult<bigint>(mc1[offset + 5], 0n),
+    },
+    kasper: {
+      exchangeRate: mcResult<bigint>(mc1[offset + 6], 0n),
+      totalStaked: mcResult<bigint>(mc1[offset + 7], 0n),
+    },
+  };
+
+  // Multicall 2: getPoolInfo per active farm pool
+  const poolIds = activePools.map(Number);
+  let poolInfos: readonly [string, bigint, bigint, bigint, bigint, boolean, boolean, bigint][] = [];
+
+  if (poolIds.length > 0) {
+    const mc2 = await client.multicall({
+      contracts: poolIds.map((pid) => ({
+        address: CONTRACTS.MASTER_CHEF,
+        abi: masterchefAbi,
+        functionName: "getPoolInfo" as const,
+        args: [BigInt(pid)] as const,
+      })),
+      allowFailure: true,
+    });
+
+    poolInfos = mc2.map((r) =>
+      mcResult<[string, bigint, bigint, bigint, bigint, boolean, boolean, bigint]>(
+        r,
+        ["0x0000000000000000000000000000000000000000", 0n, 0n, 0n, 0n, false, false, 0n]
+      )
+    );
+  }
+
+  const farmData: FarmData = {
+    poolIds,
+    poolInfos,
+    rewardPerBlock,
+    totalAllocPoint,
+    rewardToken,
+  };
+
+  return [pairData, farmData, infinityData, tokens];
 }
 
 // ===== Derive token prices from pair reserves =====
-async function derivePrices(pairs: PairData[]) {
+function derivePrices(pairs: PairData[], tokens: Token[]) {
   const wkasAddr = CONTRACTS.WKAS.toLowerCase();
   const tokenPrices: Record<string, number> = { [wkasAddr]: 1 };
 
   // Build address-to-symbol map from discovered tokens
-  const allTokens = await getAllTokens();
   const addrToSym: Record<string, string> = {};
-  for (const t of allTokens) {
+  for (const t of tokens) {
     if (t.address) addrToSym[t.address.toLowerCase()] = t.symbol;
   }
 
@@ -183,16 +189,17 @@ async function derivePrices(pairs: PairData[]) {
 }
 
 // ===== Build opportunities array =====
-async function buildOpportunities(
+function buildOpportunities(
   pairs: PairData[],
   farmData: FarmData,
   infinityData: InfinityData,
   tokenPrices: Record<string, number>,
   addrToSym: Record<string, string>,
-): Promise<YieldOpportunity[]> {
+  tokens: Token[],
+): YieldOpportunity[] {
   const opportunities: YieldOpportunity[] = [];
 
-  const rewardTokenSymbol = await addressToSymbol(farmData.rewardToken);
+  const rewardTokenSymbol = addrToSym[farmData.rewardToken] ?? "???";
   const rewardTokenPrice = tokenPrices[farmData.rewardToken] ?? 0;
 
   // --- Farms ---
@@ -258,8 +265,7 @@ async function buildOpportunities(
 
   // --- InfinityPool: ZEAL (emission-based) ---
   {
-    const allTokens = await getAllTokens();
-    const zealToken = allTokens.find((t) => t.symbol === "ZEAL");
+    const zealToken = tokens.find((t) => t.symbol === "ZEAL");
     const zealAddr = zealToken?.address?.toLowerCase();
     const totalStaked = Number(formatUnits(infinityData.zeal.totalStaked, 18));
     const zealPrice = zealAddr ? (tokenPrices[zealAddr] ?? 0) : 0;
@@ -297,14 +303,13 @@ async function buildOpportunities(
 
   // --- Fee-based InfinityPools (NACHO, KASPER) ---
   {
-    const allTokens = await getAllTokens();
     const feeBasedPools = [
       { id: "infinity-nacho", tokenSymbol: "NACHO", data: infinityData.nacho },
       { id: "infinity-kasper", tokenSymbol: "KASPER", data: infinityData.kasper },
     ] as const;
 
     for (const pool of feeBasedPools) {
-      const tokenDef = allTokens.find((t) => t.symbol === pool.tokenSymbol);
+      const tokenDef = tokens.find((t) => t.symbol === pool.tokenSymbol);
       const tokenAddr = tokenDef?.address?.toLowerCase();
       const totalStaked = Number(formatUnits(pool.data.totalStaked, 18));
       const price = tokenAddr ? (tokenPrices[tokenAddr] ?? 0) : 0;
@@ -367,9 +372,9 @@ export const yieldTools = {
     }),
     execute: async ({ filterToken }) => {
       try {
-        const [pairs, farmData, infinityData] = await fetchOnChainData();
-        const { tokenPrices, tokenPricesInKas, addrToSymbol: addrToSym } = await derivePrices(pairs);
-        const opportunities = await buildOpportunities(pairs, farmData, infinityData, tokenPrices, addrToSym);
+        const [pairs, farmData, infinityData, tokens] = await fetchOnChainData();
+        const { tokenPrices, tokenPricesInKas, addrToSymbol: addrToSym } = derivePrices(pairs, tokens);
+        const opportunities = buildOpportunities(pairs, farmData, infinityData, tokenPrices, addrToSym, tokens);
         const filtered = rankAndFilter(opportunities, filterToken);
 
         return {

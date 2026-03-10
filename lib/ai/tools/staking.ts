@@ -10,6 +10,7 @@ import {
 } from "@/config/abis";
 import type { RiskFlag, RiskLevel } from "../tool-types";
 import { client, resolveTokenAddress, getTokenDecimals, estimateGasCost, checkAllowance } from "./helpers";
+import { mcResult } from "@/lib/multicall";
 
 export const stakingTools = {
   getInfinityPoolRates: tool({
@@ -18,76 +19,38 @@ export const stakingTools = {
     inputSchema: z.object({}),
     execute: async () => {
       try {
-        const [
-          zealRate,
-          zealStaked,
-          zealPerBlock,
-          zealPaused,
-          nachoRate,
-          nachoStaked,
-          kasperRate,
-          kasperStaked,
-        ] = await Promise.all([
-          client.readContract({
-            address: CONTRACTS.INFINITY_POOL_ZEAL,
-            abi: infinityPoolZealAbi,
-            functionName: "getExchangeRate",
-          }),
-          client.readContract({
-            address: CONTRACTS.INFINITY_POOL_ZEAL,
-            abi: infinityPoolZealAbi,
-            functionName: "totalStaked",
-          }),
-          client.readContract({
-            address: CONTRACTS.INFINITY_POOL_ZEAL,
-            abi: infinityPoolZealAbi,
-            functionName: "zealPerBlock",
-          }),
-          client.readContract({
-            address: CONTRACTS.INFINITY_POOL_ZEAL,
-            abi: infinityPoolZealAbi,
-            functionName: "emissionsPaused",
-          }),
-          client.readContract({
-            address: CONTRACTS.INFINITY_POOL_NACHO,
-            abi: infinityPoolNachoAbi,
-            functionName: "getExchangeRate",
-          }),
-          client.readContract({
-            address: CONTRACTS.INFINITY_POOL_NACHO,
-            abi: infinityPoolNachoAbi,
-            functionName: "totalStaked",
-          }),
-          client.readContract({
-            address: CONTRACTS.INFINITY_POOL_KASPER,
-            abi: infinityPoolKasperAbi,
-            functionName: "getExchangeRate",
-          }),
-          client.readContract({
-            address: CONTRACTS.INFINITY_POOL_KASPER,
-            abi: infinityPoolKasperAbi,
-            functionName: "totalStaked",
-          }),
-        ]);
+        const mc = await client.multicall({
+          contracts: [
+            { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "getExchangeRate" as const },
+            { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "totalStaked" as const },
+            { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "zealPerBlock" as const },
+            { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, functionName: "emissionsPaused" as const },
+            { address: CONTRACTS.INFINITY_POOL_NACHO, abi: infinityPoolNachoAbi, functionName: "getExchangeRate" as const },
+            { address: CONTRACTS.INFINITY_POOL_NACHO, abi: infinityPoolNachoAbi, functionName: "totalStaked" as const },
+            { address: CONTRACTS.INFINITY_POOL_KASPER, abi: infinityPoolKasperAbi, functionName: "getExchangeRate" as const },
+            { address: CONTRACTS.INFINITY_POOL_KASPER, abi: infinityPoolKasperAbi, functionName: "totalStaked" as const },
+          ],
+          allowFailure: true,
+        });
 
         return {
           pools: [
             {
               name: "ZEAL",
-              exchangeRate: formatUnits(zealRate as bigint, 18),
-              totalStaked: formatUnits(zealStaked as bigint, 18),
-              zealPerBlock: formatUnits(zealPerBlock as bigint, 18),
-              emissionsPaused: zealPaused as boolean,
+              exchangeRate: formatUnits(mcResult<bigint>(mc[0], 0n), 18),
+              totalStaked: formatUnits(mcResult<bigint>(mc[1], 0n), 18),
+              zealPerBlock: formatUnits(mcResult<bigint>(mc[2], 0n), 18),
+              emissionsPaused: mcResult<boolean>(mc[3], false),
             },
             {
               name: "NACHO",
-              exchangeRate: formatUnits(nachoRate as bigint, 18),
-              totalStaked: formatUnits(nachoStaked as bigint, 18),
+              exchangeRate: formatUnits(mcResult<bigint>(mc[4], 0n), 18),
+              totalStaked: formatUnits(mcResult<bigint>(mc[5], 0n), 18),
             },
             {
               name: "KASPER",
-              exchangeRate: formatUnits(kasperRate as bigint, 18),
-              totalStaked: formatUnits(kasperStaked as bigint, 18),
+              exchangeRate: formatUnits(mcResult<bigint>(mc[6], 0n), 18),
+              totalStaked: formatUnits(mcResult<bigint>(mc[7], 0n), 18),
             },
           ],
         };
@@ -130,43 +93,41 @@ export const stakingTools = {
       const rawAmount = parseUnits(amount, decimals);
 
       try {
-        const [previewResult, exchangeRate, totalStaked] = await Promise.all([
-          client.readContract({ address: pool.address, abi: pool.abi, functionName: "previewStake", args: [rawAmount] }),
-          client.readContract({ address: pool.address, abi: pool.abi, functionName: "getExchangeRate" }),
-          client.readContract({ address: pool.address, abi: pool.abi, functionName: "totalStaked" }),
-        ]);
+        // Multicall: pool reads + optional ZEAL emissionsPaused + optional allowance
+        const stakeMcContracts = [
+          { address: pool.address, abi: pool.abi, functionName: "previewStake" as const, args: [rawAmount] as const },
+          { address: pool.address, abi: pool.abi, functionName: "getExchangeRate" as const },
+          { address: pool.address, abi: pool.abi, functionName: "totalStaked" as const },
+          ...(sym === "ZEAL" ? [{ address: pool.address, abi: infinityPoolZealAbi, functionName: "emissionsPaused" as const }] : []),
+          ...(walletAddress ? [{ address: tokenAddress, abi: erc20Abi, functionName: "allowance" as const, args: [walletAddress as `0x${string}`, pool.address] as const }] : []),
+        ];
 
-        const xTokensReceived = formatUnits(previewResult as bigint, decimals);
-        const rate = formatUnits(exchangeRate as bigint, 18);
-        const staked = formatUnits(totalStaked as bigint, decimals);
+        const stakeMc = await client.multicall({ contracts: stakeMcContracts, allowFailure: true });
 
-        // Check allowance
-        let needsApproval = false;
-        let currentAllowance = "0";
-        if (walletAddress) {
-          ({ needsApproval, currentAllowance } = await checkAllowance(
-            tokenAddress,
-            walletAddress as `0x${string}`,
-            pool.address,
-            rawAmount
-          ));
-        }
+        const xTokensReceived = formatUnits(mcResult<bigint>(stakeMc[0], 0n), decimals);
+        const rate = formatUnits(mcResult<bigint>(stakeMc[1], 0n), 18);
+        const staked = formatUnits(mcResult<bigint>(stakeMc[2], 0n), decimals);
 
-        const gasEstimate = await estimateGasCost(120000n, "0.015");
+        let mcOffset = 3;
 
         const riskFlags: RiskFlag[] = [];
         if (sym === "ZEAL") {
-          try {
-            const paused = (await client.readContract({
-              address: pool.address,
-              abi: infinityPoolZealAbi,
-              functionName: "emissionsPaused",
-            })) as boolean;
-            if (paused) {
-              riskFlags.push({ type: "emissions_paused", label: "ZEAL emissions are currently paused", severity: "high" as RiskLevel });
-            }
-          } catch { /* skip */ }
+          const paused = mcResult<boolean>(stakeMc[mcOffset], false);
+          if (paused) {
+            riskFlags.push({ type: "emissions_paused", label: "ZEAL emissions are currently paused", severity: "high" as RiskLevel });
+          }
+          mcOffset++;
         }
+
+        let needsApproval = false;
+        let currentAllowance = "0";
+        if (walletAddress) {
+          const allowance = mcResult<bigint>(stakeMc[mcOffset], 0n);
+          needsApproval = allowance < rawAmount;
+          currentAllowance = allowance.toString();
+        }
+
+        const gasEstimate = await estimateGasCost(120000n, "0.015");
 
         return {
           token: sym,
@@ -221,31 +182,33 @@ export const stakingTools = {
       const rawXAmount = parseUnits(amount, decimals);
 
       try {
-        // Get xToken address
+        // Get xToken address (needed for balance/allowance checks)
         const xTokenAddress = (await client.readContract({
           address: pool.address,
           abi: pool.abi,
           functionName: pool.xTokenFn as "xZealToken",
         })) as `0x${string}`;
 
-        const [previewResult, exchangeRate, totalStaked] = await Promise.all([
-          client.readContract({ address: pool.address, abi: pool.abi, functionName: "previewUnstake", args: [rawXAmount] }),
-          client.readContract({ address: pool.address, abi: pool.abi, functionName: "getExchangeRate" }),
-          client.readContract({ address: pool.address, abi: pool.abi, functionName: "totalStaked" }),
-        ]);
+        // Multicall: pool reads + optional balance + optional allowance
+        const unstakeMcContracts = [
+          { address: pool.address, abi: pool.abi, functionName: "previewUnstake" as const, args: [rawXAmount] as const },
+          { address: pool.address, abi: pool.abi, functionName: "getExchangeRate" as const },
+          { address: pool.address, abi: pool.abi, functionName: "totalStaked" as const },
+          ...(walletAddress ? [
+            { address: xTokenAddress, abi: erc20Abi, functionName: "balanceOf" as const, args: [walletAddress as `0x${string}`] as const },
+            { address: xTokenAddress, abi: erc20Abi, functionName: "allowance" as const, args: [walletAddress as `0x${string}`, pool.address] as const },
+          ] : []),
+        ];
 
-        const tokensReceived = formatUnits(previewResult as bigint, decimals);
-        const rate = formatUnits(exchangeRate as bigint, 18);
-        const staked = formatUnits(totalStaked as bigint, decimals);
+        const unstakeMc = await client.multicall({ contracts: unstakeMcContracts, allowFailure: true });
+
+        const tokensReceived = formatUnits(mcResult<bigint>(unstakeMc[0], 0n), decimals);
+        const rate = formatUnits(mcResult<bigint>(unstakeMc[1], 0n), 18);
+        const staked = formatUnits(mcResult<bigint>(unstakeMc[2], 0n), decimals);
 
         // Check xToken balance
         if (walletAddress) {
-          const xBalance = (await client.readContract({
-            address: xTokenAddress,
-            abi: erc20Abi,
-            functionName: "balanceOf",
-            args: [walletAddress as `0x${string}`],
-          })) as bigint;
+          const xBalance = mcResult<bigint>(unstakeMc[3], 0n);
           if (xBalance < rawXAmount) {
             return { error: `Insufficient x${sym} balance. You have ${formatUnits(xBalance, decimals)} but requested ${amount}` };
           }
@@ -255,12 +218,9 @@ export const stakingTools = {
         let needsApproval = false;
         let currentAllowance = "0";
         if (walletAddress) {
-          ({ needsApproval, currentAllowance } = await checkAllowance(
-            xTokenAddress,
-            walletAddress as `0x${string}`,
-            pool.address,
-            rawXAmount
-          ));
+          const allowance = mcResult<bigint>(unstakeMc[4], 0n);
+          needsApproval = allowance < rawXAmount;
+          currentAllowance = allowance.toString();
         }
 
         const gasEstimate = await estimateGasCost(120000n, "0.015");

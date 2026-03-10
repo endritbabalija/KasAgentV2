@@ -45,10 +45,7 @@ const INFINITY_POOLS = [
   },
 ] as const;
 
-/** Extract a successful multicall result or return a fallback. */
-function mcResult<T>(entry: { status: string; result?: unknown }, fallback: T): T {
-  return entry.status === "success" ? (entry.result as T) : fallback;
-}
+import { mcResult } from "@/lib/multicall";
 
 export const spyTools = {
   spyOnWallet: tool({

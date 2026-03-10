@@ -4,6 +4,7 @@ import { formatEther, formatUnits } from "viem";
 import { CONTRACTS } from "@/config/contracts";
 import { factoryAbi, pairAbi } from "@/config/abis";
 import { client, resolveTokenAddress, getTokenDecimals, addressToSymbol } from "./helpers";
+import { mcResult } from "@/lib/multicall";
 
 export const oracleTools = {
   getTokenPrice: tool({
@@ -49,22 +50,16 @@ export const oracleTools = {
         }
 
         // Read reserves and token ordering
-        const [reserves, token0] = await Promise.all([
-          client.readContract({
-            address: pairAddress,
-            abi: pairAbi,
-            functionName: "getReserves",
-          }),
-          client.readContract({
-            address: pairAddress,
-            abi: pairAbi,
-            functionName: "token0",
-          }),
-        ]);
+        const oracleMc = await client.multicall({
+          contracts: [
+            { address: pairAddress, abi: pairAbi, functionName: "getReserves" as const },
+            { address: pairAddress, abi: pairAbi, functionName: "token0" as const },
+          ],
+          allowFailure: true,
+        });
 
-        const [r0, r1] = reserves as [bigint, bigint, number];
-        const isToken0WKAS =
-          (token0 as string).toLowerCase() === CONTRACTS.WKAS.toLowerCase();
+        const [r0, r1] = mcResult<[bigint, bigint, number]>(oracleMc[0], [0n, 0n, 0]);
+        const isToken0WKAS = mcResult<string>(oracleMc[1], "").toLowerCase() === CONTRACTS.WKAS.toLowerCase();
 
         const reserveKAS = isToken0WKAS ? r0 : r1;
         const reserveToken = isToken0WKAS ? r1 : r0;

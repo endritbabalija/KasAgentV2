@@ -3,7 +3,8 @@ import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
 import { membershipAbi, nftStakingAbi } from "@/config/abis";
 import { checkDiscountEligibility } from "@/lib/discount";
-import { client, safeRead } from "./helpers";
+import { client } from "./helpers";
+import { mcResult } from "@/lib/multicall";
 
 export const membershipTools = {
   getMembershipStatus: tool({
@@ -18,108 +19,27 @@ export const membershipTools = {
       const addr = walletAddress as `0x${string}`;
 
       try {
-        const [
-          discount,
-          membershipResult,
-          userPower,
-          hasStakedDays,
-          nftCount,
-          totalStakers,
-          requiredDays,
-          minPower,
-          totalNFTs,
-          totalPower,
-        ] = await Promise.all([
+        // Multicall all membership + NFT staking reads + discount check in parallel
+        const [mc, discount] = await Promise.all([
+          client.multicall({
+            contracts: [
+              { address: CONTRACTS.MEMBERSHIP, abi: membershipAbi, functionName: "getUserMembership" as const, args: [addr] as const },
+              { address: CONTRACTS.NFT_STAKING, abi: nftStakingAbi, functionName: "getUserTotalPower" as const, args: [addr] as const },
+              { address: CONTRACTS.NFT_STAKING, abi: nftStakingAbi, functionName: "hasStakedForRequiredDays" as const, args: [addr] as const },
+              { address: CONTRACTS.NFT_STAKING, abi: nftStakingAbi, functionName: "userStakedNFTCount" as const, args: [addr] as const },
+              { address: CONTRACTS.NFT_STAKING, abi: nftStakingAbi, functionName: "totalStakers" as const },
+              { address: CONTRACTS.NFT_STAKING, abi: nftStakingAbi, functionName: "requiredStakingDays" as const },
+              { address: CONTRACTS.NFT_STAKING, abi: nftStakingAbi, functionName: "minRequiredPower" as const },
+              { address: CONTRACTS.NFT_STAKING, abi: nftStakingAbi, functionName: "totalNFTsStaked" as const },
+              { address: CONTRACTS.NFT_STAKING, abi: nftStakingAbi, functionName: "totalPowerStaked" as const },
+            ],
+            allowFailure: true,
+          }),
           checkDiscountEligibility(walletAddress),
-          safeRead(
-            () =>
-              client.readContract({
-                address: CONTRACTS.MEMBERSHIP,
-                abi: membershipAbi,
-                functionName: "getUserMembership",
-                args: [addr],
-              }),
-            [0n, false, false] as [bigint, boolean, boolean]
-          ),
-          safeRead(
-            () =>
-              client.readContract({
-                address: CONTRACTS.NFT_STAKING,
-                abi: nftStakingAbi,
-                functionName: "getUserTotalPower",
-                args: [addr],
-              }),
-            0n
-          ),
-          safeRead(
-            () =>
-              client.readContract({
-                address: CONTRACTS.NFT_STAKING,
-                abi: nftStakingAbi,
-                functionName: "hasStakedForRequiredDays",
-                args: [addr],
-              }),
-            false
-          ),
-          safeRead(
-            () =>
-              client.readContract({
-                address: CONTRACTS.NFT_STAKING,
-                abi: nftStakingAbi,
-                functionName: "userStakedNFTCount",
-                args: [addr],
-              }),
-            0n
-          ),
-          safeRead(
-            () =>
-              client.readContract({
-                address: CONTRACTS.NFT_STAKING,
-                abi: nftStakingAbi,
-                functionName: "totalStakers",
-              }),
-            0n
-          ),
-          safeRead(
-            () =>
-              client.readContract({
-                address: CONTRACTS.NFT_STAKING,
-                abi: nftStakingAbi,
-                functionName: "requiredStakingDays",
-              }),
-            0n
-          ),
-          safeRead(
-            () =>
-              client.readContract({
-                address: CONTRACTS.NFT_STAKING,
-                abi: nftStakingAbi,
-                functionName: "minRequiredPower",
-              }),
-            0n
-          ),
-          safeRead(
-            () =>
-              client.readContract({
-                address: CONTRACTS.NFT_STAKING,
-                abi: nftStakingAbi,
-                functionName: "totalNFTsStaked",
-              }),
-            0n
-          ),
-          safeRead(
-            () =>
-              client.readContract({
-                address: CONTRACTS.NFT_STAKING,
-                abi: nftStakingAbi,
-                functionName: "totalPowerStaked",
-              }),
-            0n
-          ),
         ]);
 
         // Membership
-        const [expiresAt, isLifetime, isActive] = membershipResult as [bigint, boolean, boolean];
+        const [expiresAt, isLifetime, isActive] = mcResult<[bigint, boolean, boolean]>(mc[0], [0n, false, false]);
         const expiresAtNum = Number(expiresAt);
         const expiresAtStr =
           isActive && !isLifetime && expiresAtNum > 0
@@ -131,8 +51,14 @@ export const membershipTools = {
             : null;
 
         // NFT Staking
-        const userPowerNum = userPower as bigint;
-        const minPowerNum = minPower as bigint;
+        const userPowerNum = mcResult<bigint>(mc[1], 0n);
+        const hasStakedDays = mcResult<boolean>(mc[2], false);
+        const nftCount = mcResult<bigint>(mc[3], 0n);
+        const totalStakers = mcResult<bigint>(mc[4], 0n);
+        const requiredDays = mcResult<bigint>(mc[5], 0n);
+        const minPowerNum = mcResult<bigint>(mc[6], 0n);
+        const totalNFTs = mcResult<bigint>(mc[7], 0n);
+        const totalPower = mcResult<bigint>(mc[8], 0n);
         const meetsMinPower = userPowerNum >= minPowerNum;
 
         return {
@@ -146,18 +72,18 @@ export const membershipTools = {
             daysRemaining,
           },
           nftStaking: {
-            stakedNFTCount: Number(nftCount as bigint),
+            stakedNFTCount: Number(nftCount),
             totalPower: Number(userPowerNum).toLocaleString("en-US"),
             minRequiredPower: Number(minPowerNum).toLocaleString("en-US"),
             meetsMinPower,
-            hasStakedRequiredDays: hasStakedDays as boolean,
-            isQualified: meetsMinPower && (hasStakedDays as boolean),
-            requiredStakingDays: Number(requiredDays as bigint),
+            hasStakedRequiredDays: hasStakedDays,
+            isQualified: meetsMinPower && hasStakedDays,
+            requiredStakingDays: Number(requiredDays),
           },
           nftStakingGlobals: {
-            totalStakers: Number(totalStakers as bigint).toLocaleString("en-US"),
-            totalNFTsStaked: Number(totalNFTs as bigint).toLocaleString("en-US"),
-            totalPowerStaked: Number(totalPower as bigint).toLocaleString("en-US"),
+            totalStakers: Number(totalStakers).toLocaleString("en-US"),
+            totalNFTsStaked: Number(totalNFTs).toLocaleString("en-US"),
+            totalPowerStaked: Number(totalPower).toLocaleString("en-US"),
           },
         };
       } catch (e) {

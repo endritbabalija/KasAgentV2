@@ -18,6 +18,7 @@ import {
   checkAllowance,
   findBestPath,
 } from "./helpers";
+import { mcResult } from "@/lib/multicall";
 
 export const swapTools = {
   getSwapQuote: tool({
@@ -180,42 +181,58 @@ export const swapTools = {
           riskFlags.push({ type: "multi_hop", label: `Multi-hop route via WKAS (${totalFeePct.toFixed(2)}% total fee)`, severity: "low" });
         }
 
-        // Check pool liquidity for each hop (KAS-denominated)
+        // Check pool liquidity for each hop (KAS-denominated) — batched
         try {
           const wkasAddr = CONTRACTS.WKAS.toLowerCase();
-          for (let i = 0; i < path.length - 1; i++) {
-            const pairAddress = (await client.readContract({
+
+          // Multicall 1: resolve all pair addresses in parallel
+          const pairMc = await client.multicall({
+            contracts: Array.from({ length: hops }, (_, i) => ({
               address: CONTRACTS.FACTORY,
               abi: factoryAbi,
-              functionName: "getPair",
-              args: [path[i], path[i + 1]],
-            })) as `0x${string}`;
+              functionName: "getPair" as const,
+              args: [path[i], path[i + 1]] as const,
+            })),
+            allowFailure: true,
+          });
 
-            if (pairAddress === "0x0000000000000000000000000000000000000000") continue;
+          const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
+          const hopPairs = pairMc.map((r) => mcResult<`0x${string}`>(r, ZERO_ADDR));
+          const validHopIndices = hopPairs
+            .map((addr, i) => (addr !== ZERO_ADDR ? i : -1))
+            .filter((i) => i >= 0);
 
-            const [reserves, token0] = await Promise.all([
-              client.readContract({ address: pairAddress, abi: pairAbi, functionName: "getReserves" }),
-              client.readContract({ address: pairAddress, abi: pairAbi, functionName: "token0" }),
-            ]);
-            const [r0, r1] = reserves as [bigint, bigint, number];
-            const t0 = (token0 as string).toLowerCase();
+          if (validHopIndices.length > 0) {
+            // Multicall 2: getReserves + token0 for all valid pairs
+            const detailMc = await client.multicall({
+              contracts: validHopIndices.flatMap((idx) => [
+                { address: hopPairs[idx], abi: pairAbi, functionName: "getReserves" as const },
+                { address: hopPairs[idx], abi: pairAbi, functionName: "token0" as const },
+              ]),
+              allowFailure: true,
+            });
 
-            // If one side is WKAS, use that reserve as the KAS-denominated liquidity
-            let liquidityKas: number;
-            if (t0 === wkasAddr) {
-              liquidityKas = Number(formatUnits(r0, 18)) * 2;
-            } else if (path[i].toLowerCase() === wkasAddr || path[i + 1].toLowerCase() === wkasAddr) {
-              liquidityKas = Number(formatUnits(r1, 18)) * 2;
-            } else {
-              // Non-WKAS pair — use raw reserve as rough estimate
-              const r0Val = Number(formatUnits(r0, 18));
-              const r1Val = Number(formatUnits(r1, 18));
-              liquidityKas = Math.min(r0Val, r1Val) * 2;
-            }
+            for (let j = 0; j < validHopIndices.length; j++) {
+              const hopIdx = validHopIndices[j];
+              const base = j * 2;
+              const [r0, r1] = mcResult<[bigint, bigint, number]>(detailMc[base], [0n, 0n, 0]);
+              const t0 = mcResult<string>(detailMc[base + 1], "").toLowerCase();
 
-            if (liquidityKas < 1000) {
-              riskFlags.push({ type: "low_liquidity", label: `Low pool liquidity on hop ${i + 1}`, severity: "high" });
-              break;
+              let liquidityKas: number;
+              if (t0 === wkasAddr) {
+                liquidityKas = Number(formatUnits(r0, 18)) * 2;
+              } else if (path[hopIdx].toLowerCase() === wkasAddr || path[hopIdx + 1].toLowerCase() === wkasAddr) {
+                liquidityKas = Number(formatUnits(r1, 18)) * 2;
+              } else {
+                const r0Val = Number(formatUnits(r0, 18));
+                const r1Val = Number(formatUnits(r1, 18));
+                liquidityKas = Math.min(r0Val, r1Val) * 2;
+              }
+
+              if (liquidityKas < 1000) {
+                riskFlags.push({ type: "low_liquidity", label: `Low pool liquidity on hop ${hopIdx + 1}`, severity: "high" });
+                break;
+              }
             }
           }
         } catch {

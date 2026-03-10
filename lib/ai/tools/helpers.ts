@@ -1,6 +1,7 @@
 import { formatEther } from "viem";
 import { CONTRACTS } from "@/config/contracts";
 import { factoryAbi, pairAbi, erc20Abi, routerAbi } from "@/config/abis";
+import { mcResult } from "@/lib/multicall";
 import {
   resolveTokenAddress,
   getTokenDecimals,
@@ -11,14 +12,6 @@ import { client } from "@/lib/viem-client";
 export { client };
 
 export { resolveTokenAddress, getTokenDecimals, addressToSymbol };
-
-export async function safeRead<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await fn();
-  } catch {
-    return fallback;
-  }
-}
 
 export async function findBestPath(
   addressIn: `0x${string}`,
@@ -72,22 +65,16 @@ export async function calculatePriceImpact(
       return "0";
     }
 
-    const [reserves, token0] = await Promise.all([
-      client.readContract({
-        address: pairAddress,
-        abi: pairAbi,
-        functionName: "getReserves",
-      }),
-      client.readContract({
-        address: pairAddress,
-        abi: pairAbi,
-        functionName: "token0",
-      }),
-    ]);
+    const impactMc = await client.multicall({
+      contracts: [
+        { address: pairAddress, abi: pairAbi, functionName: "getReserves" as const },
+        { address: pairAddress, abi: pairAbi, functionName: "token0" as const },
+      ],
+      allowFailure: true,
+    });
 
-    const [r0, r1] = reserves as [bigint, bigint, number];
-    const isToken0In =
-      (token0 as string).toLowerCase() === addressIn.toLowerCase();
+    const [r0, r1] = mcResult<[bigint, bigint, number]>(impactMc[0], [0n, 0n, 0]);
+    const isToken0In = mcResult<string>(impactMc[1], "").toLowerCase() === addressIn.toLowerCase();
     const reserveIn = isToken0In ? r0 : r1;
     const reserveOut = isToken0In ? r1 : r0;
 

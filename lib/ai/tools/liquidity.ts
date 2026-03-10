@@ -15,6 +15,7 @@ import {
   calculateMinAmount,
   checkAllowance,
 } from "./helpers";
+import { mcResult } from "@/lib/multicall";
 
 export const liquidityTools = {
   getPoolReserves: tool({
@@ -45,26 +46,20 @@ export const liquidityTools = {
           return { error: `No pair exists for ${tokenA}/${tokenB}` };
         }
 
-        const [reserves, token0, totalSupply] = await Promise.all([
-          client.readContract({
-            address: pairAddress as `0x${string}`,
-            abi: pairAbi,
-            functionName: "getReserves",
-          }),
-          client.readContract({
-            address: pairAddress as `0x${string}`,
-            abi: pairAbi,
-            functionName: "token0",
-          }),
-          client.readContract({
-            address: pairAddress as `0x${string}`,
-            abi: pairAbi,
-            functionName: "totalSupply",
-          }),
-        ]);
+        const mc = await client.multicall({
+          contracts: [
+            { address: pairAddress as `0x${string}`, abi: pairAbi, functionName: "getReserves" as const },
+            { address: pairAddress as `0x${string}`, abi: pairAbi, functionName: "token0" as const },
+            { address: pairAddress as `0x${string}`, abi: pairAbi, functionName: "totalSupply" as const },
+          ],
+          allowFailure: true,
+        });
 
-        const isToken0A =
-          (token0 as string).toLowerCase() === addressA.toLowerCase();
+        const reserves = mcResult<[bigint, bigint, number]>(mc[0], [0n, 0n, 0]);
+        const token0 = mcResult<string>(mc[1], "");
+        const totalSupply = mcResult<bigint>(mc[2], 0n);
+
+        const isToken0A = token0.toLowerCase() === addressA.toLowerCase();
 
         const decimalsA = await getTokenDecimals(tokenA);
         const decimalsB = await getTokenDecimals(tokenB);
@@ -73,18 +68,14 @@ export const liquidityTools = {
           pair: `${tokenA}/${tokenB}`,
           pairAddress,
           reserveA: formatUnits(
-            isToken0A
-              ? (reserves as [bigint, bigint, number])[0]
-              : (reserves as [bigint, bigint, number])[1],
+            isToken0A ? reserves[0] : reserves[1],
             decimalsA
           ),
           reserveB: formatUnits(
-            isToken0A
-              ? (reserves as [bigint, bigint, number])[1]
-              : (reserves as [bigint, bigint, number])[0],
+            isToken0A ? reserves[1] : reserves[0],
             decimalsB
           ),
-          totalLpSupply: formatUnits(totalSupply as bigint, 18),
+          totalLpSupply: formatUnits(totalSupply, 18),
         };
       } catch (e) {
         return {
@@ -137,6 +128,11 @@ export const liquidityTools = {
         let estimatedLpTokens = "0";
         let poolShare = "0";
 
+        // Pair reserve data — hoisted so risk flags can reuse without re-reading
+        let pairR0 = 0n;
+        let pairR1 = 0n;
+        let pairIsToken0A = false;
+
         if (isNewPair) {
           if (!amountB) {
             return { error: "Both token amounts are required when creating a new pair" };
@@ -146,17 +142,20 @@ export const liquidityTools = {
           estimatedLpTokens = "first deposit";
           poolShare = "100";
         } else {
-          const [reserves, token0, totalSupply] = await Promise.all([
-            client.readContract({ address: pairAddress, abi: pairAbi, functionName: "getReserves" }),
-            client.readContract({ address: pairAddress, abi: pairAbi, functionName: "token0" }),
-            client.readContract({ address: pairAddress, abi: pairAbi, functionName: "totalSupply" }),
-          ]);
+          const pairMc = await client.multicall({
+            contracts: [
+              { address: pairAddress, abi: pairAbi, functionName: "getReserves" as const },
+              { address: pairAddress, abi: pairAbi, functionName: "token0" as const },
+              { address: pairAddress, abi: pairAbi, functionName: "totalSupply" as const },
+            ],
+            allowFailure: true,
+          });
 
-          const [r0, r1] = reserves as [bigint, bigint, number];
-          const isToken0A = (token0 as string).toLowerCase() === addressA.toLowerCase();
-          const reserveA = isToken0A ? r0 : r1;
-          const reserveB = isToken0A ? r1 : r0;
-          const lpTotalSupply = totalSupply as bigint;
+          [pairR0, pairR1] = mcResult<[bigint, bigint, number]>(pairMc[0], [0n, 0n, 0]);
+          pairIsToken0A = mcResult<string>(pairMc[1], "").toLowerCase() === addressA.toLowerCase();
+          const reserveA = pairIsToken0A ? pairR0 : pairR1;
+          const reserveB = pairIsToken0A ? pairR1 : pairR0;
+          const lpTotalSupply = mcResult<bigint>(pairMc[2], 0n);
 
           if (amountB) {
             rawAmountB = parseUnits(amountB, decimalsB);
@@ -216,26 +215,21 @@ export const liquidityTools = {
           riskFlags.push({ type: "new_pair", label: "Creating a new liquidity pair", severity: "medium" as RiskLevel });
         }
         if (!isNewPair) {
-          try {
-            const pairReserves = (await client.readContract({ address: pairAddress, abi: pairAbi, functionName: "getReserves" })) as [bigint, bigint, number];
-            const token0 = (await client.readContract({ address: pairAddress, abi: pairAbi, functionName: "token0" })) as string;
-            const isT0A = token0.toLowerCase() === addressA.toLowerCase();
-            const rA = isT0A ? pairReserves[0] : pairReserves[1];
-            const rB = isT0A ? pairReserves[1] : pairReserves[0];
-            if (rA > 0n && rB > 0n) {
-              const optimalB = (rawAmountA * rB) / rA;
-              const diff = rawAmountB > optimalB ? rawAmountB - optimalB : optimalB - rawAmountB;
-              const pctDiff = Number((diff * 10000n) / optimalB) / 100;
-              if (pctDiff > 5) {
-                riskFlags.push({ type: "unbalanced_deposit", label: `Deposit is ${pctDiff.toFixed(1)}% off optimal ratio`, severity: "medium" as RiskLevel });
-              }
+          const reserveA = pairIsToken0A ? pairR0 : pairR1;
+          const reserveB = pairIsToken0A ? pairR1 : pairR0;
+          if (reserveA > 0n && reserveB > 0n) {
+            const optimalB = (rawAmountA * reserveB) / reserveA;
+            const diff = rawAmountB > optimalB ? rawAmountB - optimalB : optimalB - rawAmountB;
+            const pctDiff = Number((diff * 10000n) / optimalB) / 100;
+            if (pctDiff > 5) {
+              riskFlags.push({ type: "unbalanced_deposit", label: `Deposit is ${pctDiff.toFixed(1)}% off optimal ratio`, severity: "medium" as RiskLevel });
             }
-            const resIn = Number(formatUnits(isT0A ? pairReserves[0] : pairReserves[1], decimalsA));
-            const resOut = Number(formatUnits(isT0A ? pairReserves[1] : pairReserves[0], decimalsB));
-            if (resIn < 1000 || resOut < 1000) {
-              riskFlags.push({ type: "low_liquidity", label: "Low pool liquidity", severity: "high" as RiskLevel });
-            }
-          } catch { /* skip */ }
+          }
+          const resIn = Number(formatUnits(pairIsToken0A ? pairR0 : pairR1, decimalsA));
+          const resOut = Number(formatUnits(pairIsToken0A ? pairR1 : pairR0, decimalsB));
+          if (resIn < 1000 || resOut < 1000) {
+            riskFlags.push({ type: "low_liquidity", label: "Low pool liquidity", severity: "high" as RiskLevel });
+          }
         }
 
         const fnName = liquidityType === "KAS_TOKEN" ? "addLiquidityKAS" : "addLiquidity";
@@ -324,14 +318,17 @@ export const liquidityTools = {
           return { error: "Wallet address is required for remove liquidity" };
         }
 
-        const [userLpBalance, reserves, token0, totalSupply] = await Promise.all([
-          client.readContract({ address: pairAddress, abi: pairAbi, functionName: "balanceOf", args: [walletAddress as `0x${string}`] }),
-          client.readContract({ address: pairAddress, abi: pairAbi, functionName: "getReserves" }),
-          client.readContract({ address: pairAddress, abi: pairAbi, functionName: "token0" }),
-          client.readContract({ address: pairAddress, abi: pairAbi, functionName: "totalSupply" }),
-        ]);
+        const removeMc = await client.multicall({
+          contracts: [
+            { address: pairAddress, abi: pairAbi, functionName: "balanceOf" as const, args: [walletAddress as `0x${string}`] as const },
+            { address: pairAddress, abi: pairAbi, functionName: "getReserves" as const },
+            { address: pairAddress, abi: pairAbi, functionName: "token0" as const },
+            { address: pairAddress, abi: pairAbi, functionName: "totalSupply" as const },
+          ],
+          allowFailure: true,
+        });
 
-        const lpBalance = userLpBalance as bigint;
+        const lpBalance = mcResult<bigint>(removeMc[0], 0n);
         if (lpBalance === 0n) {
           return { error: `You have no LP tokens for ${tokenA}/${tokenB}` };
         }
@@ -339,9 +336,9 @@ export const liquidityTools = {
         const clampedPct = Math.min(100, Math.max(1, percentage));
         const lpToRemove = (lpBalance * BigInt(clampedPct)) / 100n;
 
-        const [r0, r1] = reserves as [bigint, bigint, number];
-        const lpTotal = totalSupply as bigint;
-        const isToken0A = (token0 as string).toLowerCase() === addressA.toLowerCase();
+        const [r0, r1] = mcResult<[bigint, bigint, number]>(removeMc[1], [0n, 0n, 0]);
+        const lpTotal = mcResult<bigint>(removeMc[3], 0n);
+        const isToken0A = mcResult<string>(removeMc[2], "").toLowerCase() === addressA.toLowerCase();
         const reserveA = isToken0A ? r0 : r1;
         const reserveB = isToken0A ? r1 : r0;
 
