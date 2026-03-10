@@ -13,15 +13,17 @@ import {
   CancelledState,
   DetailRow,
 } from "./shared/ExecutionCardParts";
+import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
 
 type FarmUnstakeState = "idle" | "withdrawing" | "success" | "error" | "cancelled";
 
-export function FarmUnstakeCard({ data }: { data: PrepareFarmUnstakeResult }) {
+export function FarmUnstakeCard({ data, toolCallId, executionState }: { data: PrepareFarmUnstakeResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { isConnected } = useAccount();
   const config = useConfig();
-  const [state, setState] = useState<FarmUnstakeState>("idle");
+  const { markExecuted } = useExecutionState();
+  const [state, setState] = useState<FarmUnstakeState>((executionState?.state as FarmUnstakeState) ?? "idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string>();
+  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
   const { writeContractAsync: writeWithdrawAsync, reset: resetWithdraw } = useWriteContract();
 
@@ -39,6 +41,7 @@ export function FarmUnstakeCard({ data }: { data: PrepareFarmUnstakeResult }) {
       setTxHash(hash);
       await waitForTransactionReceipt(config, { hash });
       setState("success");
+      if (toolCallId) markExecuted(toolCallId, "success", hash);
     } catch (err) {
       setState("error");
       setErrorMsg((err as Error).message.split("\n")[0]);
@@ -90,7 +93,7 @@ export function FarmUnstakeCard({ data }: { data: PrepareFarmUnstakeResult }) {
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => setState("cancelled")}
+        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
         walletMessage="Connect your wallet to unstake"
         successMessage="LP tokens unstaked! Rewards claimed."
         buttonLabel="Unstake LP"

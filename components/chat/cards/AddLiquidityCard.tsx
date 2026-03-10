@@ -14,6 +14,7 @@ import {
   CancelledState,
   DetailRow,
 } from "./shared/ExecutionCardParts";
+import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
 
 type AddLiquidityState =
   | "idle"
@@ -24,12 +25,13 @@ type AddLiquidityState =
   | "error"
   | "cancelled";
 
-export function AddLiquidityCard({ data }: { data: PrepareAddLiquidityResult }) {
+export function AddLiquidityCard({ data, toolCallId, executionState }: { data: PrepareAddLiquidityResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { address, isConnected } = useAccount();
   const config = useConfig();
-  const [state, setState] = useState<AddLiquidityState>("idle");
+  const { markExecuted } = useExecutionState();
+  const [state, setState] = useState<AddLiquidityState>((executionState?.state as AddLiquidityState) ?? "idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string>();
+  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
   const { writeContractAsync: writeApproveAAsync, reset: resetApproveA } = useWriteContract();
   const { writeContractAsync: writeApproveBAsync, reset: resetApproveB } = useWriteContract();
@@ -103,6 +105,7 @@ export function AddLiquidityCard({ data }: { data: PrepareAddLiquidityResult }) 
       setTxHash(hash);
       await waitForTransactionReceipt(config, { hash });
       setState("success");
+      if (toolCallId) markExecuted(toolCallId, "success", hash);
     } catch (err) {
       setState("error");
       setErrorMsg((err as Error).message.split("\n")[0]);
@@ -180,7 +183,7 @@ export function AddLiquidityCard({ data }: { data: PrepareAddLiquidityResult }) 
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => setState("cancelled")}
+        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
         walletMessage="Connect your wallet to add liquidity"
         successMessage="Liquidity added!"
         buttonLabel={buttonLabel}

@@ -35,14 +35,18 @@ import type {
   TokenPriceResult,
 } from "@/lib/ai/tool-types";
 
+import { useExecutionState } from "./ExecutionStateContext";
+
 interface ToolPart {
   toolName: string;
   state: string;
   output?: unknown;
   errorText?: string;
+  toolCallId?: string;
 }
 
 export function ToolPartRenderer({ part }: { part: ToolPart }) {
+  const { getExecutionState } = useExecutionState();
   const { toolName, state } = part;
 
   // Loading states
@@ -61,6 +65,8 @@ export function ToolPartRenderer({ part }: { part: ToolPart }) {
   }
 
   const output = part.output as Record<string, unknown> | undefined;
+  const toolCallId = part.toolCallId;
+  const execution = toolCallId ? getExecutionState(toolCallId) : undefined;
 
   // Check for error in output
   if (output?.error) {
@@ -71,7 +77,7 @@ export function ToolPartRenderer({ part }: { part: ToolPart }) {
     case "getSwapQuote":
       return <SwapQuoteCard data={output as unknown as SwapQuoteResult} />;
     case "prepareSwap":
-      return <SwapExecutionCard data={output as unknown as PrepareSwapResult} />;
+      return <SwapExecutionCard data={output as unknown as PrepareSwapResult} toolCallId={toolCallId} executionState={execution} />;
     case "getPoolReserves":
       return <PoolReservesCard data={output as unknown as PoolReservesResult} />;
     case "getActiveFarms":
@@ -81,17 +87,17 @@ export function ToolPartRenderer({ part }: { part: ToolPart }) {
     case "discoverYieldOpportunities":
       return <YieldOpportunitiesCard data={output as unknown as YieldOpportunitiesResult} />;
     case "prepareAddLiquidity":
-      return <AddLiquidityCard data={output as unknown as PrepareAddLiquidityResult} />;
+      return <AddLiquidityCard data={output as unknown as PrepareAddLiquidityResult} toolCallId={toolCallId} executionState={execution} />;
     case "prepareRemoveLiquidity":
-      return <RemoveLiquidityCard data={output as unknown as PrepareRemoveLiquidityResult} />;
+      return <RemoveLiquidityCard data={output as unknown as PrepareRemoveLiquidityResult} toolCallId={toolCallId} executionState={execution} />;
     case "prepareFarmStake":
-      return <FarmStakeCard data={output as unknown as PrepareFarmStakeResult} />;
+      return <FarmStakeCard data={output as unknown as PrepareFarmStakeResult} toolCallId={toolCallId} executionState={execution} />;
     case "prepareFarmUnstake":
-      return <FarmUnstakeCard data={output as unknown as PrepareFarmUnstakeResult} />;
+      return <FarmUnstakeCard data={output as unknown as PrepareFarmUnstakeResult} toolCallId={toolCallId} executionState={execution} />;
     case "prepareInfinityStake":
-      return <InfinityStakeCard data={output as unknown as PrepareInfinityStakeResult} />;
+      return <InfinityStakeCard data={output as unknown as PrepareInfinityStakeResult} toolCallId={toolCallId} executionState={execution} />;
     case "prepareInfinityUnstake":
-      return <InfinityUnstakeCard data={output as unknown as PrepareInfinityUnstakeResult} />;
+      return <InfinityUnstakeCard data={output as unknown as PrepareInfinityUnstakeResult} toolCallId={toolCallId} executionState={execution} />;
     case "getTransactionHistory":
       return <TransactionHistoryCard data={output as unknown as TransactionHistoryResult} />;
     case "getMembershipStatus":

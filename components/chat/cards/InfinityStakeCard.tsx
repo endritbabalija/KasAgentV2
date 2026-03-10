@@ -14,6 +14,7 @@ import {
   CancelledState,
   DetailRow,
 } from "./shared/ExecutionCardParts";
+import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const poolAbis: Record<string, any> = {
@@ -24,12 +25,13 @@ const poolAbis: Record<string, any> = {
 
 type InfinityStakeState = "idle" | "approving" | "staking" | "success" | "error" | "cancelled";
 
-export function InfinityStakeCard({ data }: { data: PrepareInfinityStakeResult }) {
+export function InfinityStakeCard({ data, toolCallId, executionState }: { data: PrepareInfinityStakeResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { isConnected } = useAccount();
   const config = useConfig();
-  const [state, setState] = useState<InfinityStakeState>("idle");
+  const { markExecuted } = useExecutionState();
+  const [state, setState] = useState<InfinityStakeState>((executionState?.state as InfinityStakeState) ?? "idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string>();
+  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
   const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
   const { writeContractAsync: writeStakeAsync, reset: resetStake } = useWriteContract();
@@ -62,6 +64,7 @@ export function InfinityStakeCard({ data }: { data: PrepareInfinityStakeResult }
       setTxHash(hash);
       await waitForTransactionReceipt(config, { hash });
       setState("success");
+      if (toolCallId) markExecuted(toolCallId, "success", hash);
     } catch (err) {
       setState("error");
       setErrorMsg((err as Error).message.split("\n")[0]);
@@ -124,7 +127,7 @@ export function InfinityStakeCard({ data }: { data: PrepareInfinityStakeResult }
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => setState("cancelled")}
+        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
         walletMessage="Connect your wallet to stake"
         successMessage={`${data.token} staked! You received x${data.token}.`}
         buttonLabel={data.needsApproval ? `Approve & Stake ${data.token}` : `Stake ${data.token}`}

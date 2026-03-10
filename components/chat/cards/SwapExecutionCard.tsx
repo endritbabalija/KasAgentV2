@@ -14,15 +14,17 @@ import {
   ActionArea,
   CancelledState,
 } from "./shared/ExecutionCardParts";
+import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
 
 type SwapState = "idle" | "approving" | "swapping" | "success" | "error" | "cancelled";
 
-export function SwapExecutionCard({ data }: { data: PrepareSwapResult }) {
+export function SwapExecutionCard({ data, toolCallId, executionState }: { data: PrepareSwapResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { address, isConnected } = useAccount();
   const config = useConfig();
-  const [state, setState] = useState<SwapState>("idle");
+  const { markExecuted } = useExecutionState();
+  const [state, setState] = useState<SwapState>((executionState?.state as SwapState) ?? "idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string>();
+  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
   const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
   const { writeContractAsync: writeSwapAsync, reset: resetSwap } = useWriteContract();
@@ -87,6 +89,7 @@ export function SwapExecutionCard({ data }: { data: PrepareSwapResult }) {
       setTxHash(hash);
       await waitForTransactionReceipt(config, { hash });
       setState("success");
+      if (toolCallId) markExecuted(toolCallId, "success", hash);
     } catch (err) {
       setState("error");
       setErrorMsg((err as Error).message.split("\n")[0]);
@@ -171,7 +174,7 @@ export function SwapExecutionCard({ data }: { data: PrepareSwapResult }) {
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => setState("cancelled")}
+        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
         walletMessage="Connect your wallet to execute this swap"
         successMessage="Swap confirmed!"
         buttonLabel={data.needsApproval ? "Approve & Swap" : "Execute Swap"}

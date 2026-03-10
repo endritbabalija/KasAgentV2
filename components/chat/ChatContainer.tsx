@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import type { Portfolio } from "@/hooks/usePortfolio";
@@ -16,11 +16,16 @@ import { AlertTriangle } from "lucide-react";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { WelcomeScreen } from "./WelcomeScreen";
+import {
+  ExecutionStateContext,
+  type ExecutionRecord,
+} from "./ExecutionStateContext";
 
 interface ChatContainerProps {
   portfolio: Portfolio;
   pools: InfinityPoolInfo[];
   initialMessages: UIMessage[];
+  initialExecutionStates: Record<string, ExecutionRecord>;
   activeConversationId: string | null;
   onConversationSaved: (messages: UIMessage[]) => void;
   onMessagesChange?: (messages: UIMessage[]) => void;
@@ -60,6 +65,7 @@ export function ChatContainer({
   portfolio,
   pools,
   initialMessages,
+  initialExecutionStates,
   activeConversationId,
   onConversationSaved,
   onMessagesChange,
@@ -77,14 +83,83 @@ export function ChatContainer({
       })
   );
 
-  // Refs to avoid stale closures in onError and beforeunload
+  // Refs to avoid stale closures in onError, beforeunload, and markExecuted
   const messagesRef = useRef<UIMessage[]>(initialMessages);
   const onSavedRef = useRef(onConversationSaved);
   const conversationIdRef = useRef(activeConversationId);
+  const portfolioRef = useRef(portfolio.address);
   useEffect(() => {
     onSavedRef.current = onConversationSaved;
     conversationIdRef.current = activeConversationId;
+    portfolioRef.current = portfolio.address;
   });
+
+  // Execution state persistence — backed by Supabase execution_states table.
+  // initialExecutionStates is loaded alongside messages from the conversation API.
+  const [executionStates, setExecutionStates] = useState(initialExecutionStates);
+  const pendingExecutionsRef = useRef<Array<{ toolCallId: string; state: string; txHash?: string }>>([]);
+
+  const markExecuted = useCallback(
+    (toolCallId: string, state: string, txHash?: string) => {
+      const record: ExecutionRecord = { state, ...(txHash ? { txHash } : {}) };
+      setExecutionStates((prev) => ({ ...prev, [toolCallId]: record }));
+
+      // Persist to DB (fire-and-forget — the local state is already updated)
+      const convoId = conversationIdRef.current;
+      const wallet = portfolioRef.current;
+      if (convoId && wallet) {
+        fetch("/api/execution-states", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletAddress: wallet,
+            conversationId: convoId,
+            toolCallId,
+            state,
+            txHash,
+          }),
+        }).catch((err) =>
+          console.error("[markExecuted] Failed to persist execution state:", err),
+        );
+      } else {
+        // Conversation not saved yet — queue for when the ID arrives
+        pendingExecutionsRef.current.push({ toolCallId, state, txHash });
+      }
+    },
+    [],
+  );
+
+  // Flush pending execution states once conversationId becomes available
+  useEffect(() => {
+    if (activeConversationId && portfolio.address && pendingExecutionsRef.current.length > 0) {
+      const pending = pendingExecutionsRef.current.splice(0);
+      for (const { toolCallId, state, txHash } of pending) {
+        fetch("/api/execution-states", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletAddress: portfolio.address,
+            conversationId: activeConversationId,
+            toolCallId,
+            state,
+            txHash,
+          }),
+        }).catch((err) =>
+          console.error("[markExecuted] Failed to flush pending execution state:", err),
+        );
+      }
+    }
+  }, [activeConversationId, portfolio.address]);
+
+  const getExecutionState = useCallback(
+    (toolCallId: string) => executionStates[toolCallId],
+    [executionStates],
+  );
+
+  const executionCtx = useMemo(
+    () => ({ markExecuted, getExecutionState }),
+    [markExecuted, getExecutionState],
+  );
 
   const { messages, status, error, stop, sendMessage, regenerate } = useChat({
     transport,
@@ -162,59 +237,61 @@ export function ChatContainer({
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {hasMessages ? (
-        <>
-          <MessageList
-            messages={messages}
-            isWaiting={isWaiting}
-            isStreaming={status === "streaming"}
-            error={error}
-            onSendMessage={handleSuggestionClick}
-            onRetry={regenerate}
-          />
-          {saveError && (
-            <div className="mx-3 sm:mx-4 mb-1 max-w-3xl self-center w-full py-2 px-3 bg-amber-950/50 border border-amber-700/50 rounded-lg flex items-center gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <p className="text-sm text-amber-400 flex-1">
-                {saveError}
-              </p>
-              <button
-                onClick={handleRetrySave}
-                className="text-sm text-amber-400 hover:text-amber-300 underline underline-offset-2 font-medium shrink-0"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-          <ChatInput
-            onSubmit={handleSubmit}
-            onStop={stop}
-            isLoading={isLoading}
-            isConnected={portfolio.isConnected}
-          />
-        </>
-      ) : (
-        <div className="flex-1 flex flex-col">
-          <div className="flex-1" />
-          <WelcomeScreen
-            isConnected={portfolio.isConnected}
-            onSuggestionClick={handleSuggestionClick}
-            hasBalances={portfolio.balances.length > 0}
-            hasPositions={
-              portfolio.lpPositions.length > 0 ||
-              portfolio.farmPositions.length > 0 ||
-              portfolio.stakingPositions.some((s) => s.xTokenBalance > 0n)
-            }
-          />
-          <ChatInput
-            onSubmit={handleSubmit}
-            onStop={stop}
-            isLoading={isLoading}
-            isConnected={portfolio.isConnected}
-          />
-        </div>
-      )}
-    </div>
+    <ExecutionStateContext.Provider value={executionCtx}>
+      <div className="flex flex-col h-full">
+        {hasMessages ? (
+          <>
+            <MessageList
+              messages={messages}
+              isWaiting={isWaiting}
+              isStreaming={status === "streaming"}
+              error={error}
+              onSendMessage={handleSuggestionClick}
+              onRetry={regenerate}
+            />
+            {saveError && (
+              <div className="mx-3 sm:mx-4 mb-1 max-w-3xl self-center w-full py-2 px-3 bg-amber-950/50 border border-amber-700/50 rounded-lg flex items-center gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <p className="text-sm text-amber-400 flex-1">
+                  {saveError}
+                </p>
+                <button
+                  onClick={handleRetrySave}
+                  className="text-sm text-amber-400 hover:text-amber-300 underline underline-offset-2 font-medium shrink-0"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            <ChatInput
+              onSubmit={handleSubmit}
+              onStop={stop}
+              isLoading={isLoading}
+              isConnected={portfolio.isConnected}
+            />
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col">
+            <div className="flex-1" />
+            <WelcomeScreen
+              isConnected={portfolio.isConnected}
+              onSuggestionClick={handleSuggestionClick}
+              hasBalances={portfolio.balances.length > 0}
+              hasPositions={
+                portfolio.lpPositions.length > 0 ||
+                portfolio.farmPositions.length > 0 ||
+                portfolio.stakingPositions.some((s) => s.xTokenBalance > 0n)
+              }
+            />
+            <ChatInput
+              onSubmit={handleSubmit}
+              onStop={stop}
+              isLoading={isLoading}
+              isConnected={portfolio.isConnected}
+            />
+          </div>
+        )}
+      </div>
+    </ExecutionStateContext.Provider>
   );
 }

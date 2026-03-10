@@ -73,7 +73,16 @@ async function bench(
   }
 }
 
-// 4. Run all benchmarks
+// 4. Tool call wrappers — call each tool's execute fn with typed args
+//    and a minimal options stub so the AI SDK doesn't complain.
+const toolOpts = { toolCallId: "bench", messages: [] as never[] };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function callTool(toolObj: { execute?: (...args: any[]) => any }, args: unknown) {
+  return toolObj.execute!(args, toolOpts);
+}
+
+// 5. Run all benchmarks
 async function main() {
   console.log("\n  KasAgent RPC Benchmark — Multicall Optimization");
   console.log("  Counting actual HTTP requests to Kasplex L2 RPC.\n");
@@ -101,35 +110,37 @@ async function main() {
   // ── Phase 2: Yield ──
   // Pairs from cache (0 RPCs) + mc1 (yield reads) + mc2 (farm poolInfos) = 2
   await bench("Yield discovery", 2, () =>
-    yieldTools.discoverYieldOpportunities.execute({}),
+    callTool(yieldTools.discoverYieldOpportunities, {}),
   );
 
   // ── Phase 3: Farms ──
   // mc1 (4 globals) + mc2 (poolInfo per pool) = 2
-  await bench("getActiveFarms", 2, () => farmTools.getActiveFarms.execute({}));
+  await bench("getActiveFarms", 2, () =>
+    callTool(farmTools.getActiveFarms, {}),
+  );
 
   // ── Phase 4: Staking ──
   // 1 multicall with 8 reads
   await bench("getInfinityPoolRates", 1, () =>
-    stakingTools.getInfinityPoolRates.execute({}),
+    callTool(stakingTools.getInfinityPoolRates, {}),
   );
 
   // ── Phase 5: Liquidity ──
   // getPair (1) + multicall reserves/token0/totalSupply (1) = 2
   await bench("getPoolReserves (KAS/ZEAL)", 2, () =>
-    liquidityTools.getPoolReserves.execute({ tokenA: "KAS", tokenB: "ZEAL" }),
+    callTool(liquidityTools.getPoolReserves, { tokenA: "KAS", tokenB: "ZEAL" }),
   );
 
   // ── Phase 6: Oracle ──
   // getPair (1) + multicall reserves/token0 (1) = 2
   await bench("getTokenPrice (ZEAL)", 2, () =>
-    oracleTools.getTokenPrice.execute({ token: "ZEAL" }),
+    callTool(oracleTools.getTokenPrice, { token: "ZEAL" }),
   );
 
   // ── Phase 7: Membership ──
   // 1 multicall (9 reads) + 1 discount check = 2  (run in parallel)
   await bench("getMembershipStatus", 2, () =>
-    membershipTools.getMembershipStatus.execute({
+    callTool(membershipTools.getMembershipStatus, {
       walletAddress: "0x0000000000000000000000000000000000000001",
     }),
   );
@@ -157,7 +168,9 @@ async function main() {
       `  │ ${r.name.padEnd(nameW)} │ ${rpcs.padStart(5)} │ ${ms.padStart(8)} │ ${status.padEnd(7)} │`,
     );
     if (r.error) {
-      console.log(`  │ ${"  └ " + r.error.padEnd(nameW - 4)} │       │          │         │`);
+      console.log(
+        `  │ ${"  └ " + r.error.padEnd(nameW - 4)} │       │          │         │`,
+      );
     }
   }
   console.log(line("└", "┴", "┘"));

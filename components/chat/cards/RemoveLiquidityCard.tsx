@@ -14,15 +14,17 @@ import {
   CancelledState,
   DetailRow,
 } from "./shared/ExecutionCardParts";
+import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
 
 type RemoveLiquidityState = "idle" | "approving" | "removing" | "success" | "error" | "cancelled";
 
-export function RemoveLiquidityCard({ data }: { data: PrepareRemoveLiquidityResult }) {
+export function RemoveLiquidityCard({ data, toolCallId, executionState }: { data: PrepareRemoveLiquidityResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { address, isConnected } = useAccount();
   const config = useConfig();
-  const [state, setState] = useState<RemoveLiquidityState>("idle");
+  const { markExecuted } = useExecutionState();
+  const [state, setState] = useState<RemoveLiquidityState>((executionState?.state as RemoveLiquidityState) ?? "idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string>();
+  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
   const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
   const { writeContractAsync: writeRemoveAsync, reset: resetRemove } = useWriteContract();
@@ -80,6 +82,7 @@ export function RemoveLiquidityCard({ data }: { data: PrepareRemoveLiquidityResu
       setTxHash(hash);
       await waitForTransactionReceipt(config, { hash });
       setState("success");
+      if (toolCallId) markExecuted(toolCallId, "success", hash);
     } catch (err) {
       setState("error");
       setErrorMsg((err as Error).message.split("\n")[0]);
@@ -143,7 +146,7 @@ export function RemoveLiquidityCard({ data }: { data: PrepareRemoveLiquidityResu
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => setState("cancelled")}
+        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
         walletMessage="Connect your wallet to remove liquidity"
         successMessage="Liquidity removed!"
         buttonLabel={data.needsApproval ? "Approve & Remove" : "Remove Liquidity"}

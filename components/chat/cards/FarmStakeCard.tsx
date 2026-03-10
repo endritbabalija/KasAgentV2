@@ -13,15 +13,17 @@ import {
   CancelledState,
   DetailRow,
 } from "./shared/ExecutionCardParts";
+import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
 
 type FarmStakeState = "idle" | "approving" | "depositing" | "success" | "error" | "cancelled";
 
-export function FarmStakeCard({ data }: { data: PrepareFarmStakeResult }) {
+export function FarmStakeCard({ data, toolCallId, executionState }: { data: PrepareFarmStakeResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { isConnected } = useAccount();
   const config = useConfig();
-  const [state, setState] = useState<FarmStakeState>("idle");
+  const { markExecuted } = useExecutionState();
+  const [state, setState] = useState<FarmStakeState>((executionState?.state as FarmStakeState) ?? "idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string>();
+  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
   const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
   const { writeContractAsync: writeDepositAsync, reset: resetDeposit } = useWriteContract();
@@ -53,6 +55,7 @@ export function FarmStakeCard({ data }: { data: PrepareFarmStakeResult }) {
       setTxHash(hash);
       await waitForTransactionReceipt(config, { hash });
       setState("success");
+      if (toolCallId) markExecuted(toolCallId, "success", hash);
     } catch (err) {
       setState("error");
       setErrorMsg((err as Error).message.split("\n")[0]);
@@ -107,7 +110,7 @@ export function FarmStakeCard({ data }: { data: PrepareFarmStakeResult }) {
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => setState("cancelled")}
+        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
         walletMessage="Connect your wallet to stake"
         successMessage="LP tokens staked!"
         buttonLabel={data.needsApproval ? "Approve & Stake" : "Stake LP"}

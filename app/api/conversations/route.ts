@@ -1,6 +1,5 @@
 import { supabase } from "@/lib/supabase";
-
-const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+import { ETH_ADDRESS_RE } from "@/lib/validation";
 
 export async function GET(req: Request) {
   try {

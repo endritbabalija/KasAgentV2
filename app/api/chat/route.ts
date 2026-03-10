@@ -13,12 +13,11 @@ import type {
 } from "@/lib/ai/serializers";
 import "@/lib/env"; // validate env vars at startup
 import { supabase } from "@/lib/supabase";
+import { ETH_ADDRESS_RE } from "@/lib/validation";
 
 /* ------------------------------------------------------------------ */
 /*  Route handler                                                      */
 /* ------------------------------------------------------------------ */
-
-const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 export async function POST(req: Request) {
   try {

@@ -1,7 +1,6 @@
 import { supabase } from "@/lib/supabase";
+import { ETH_ADDRESS_RE } from "@/lib/validation";
 import type { UIMessage } from "ai";
-
-const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 function generateTitle(messages: UIMessage[]): string {
   const firstUserMsg = messages.find((m) => m.role === "user");

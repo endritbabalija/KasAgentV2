@@ -21,6 +21,7 @@ export default function Home() {
     conversations,
     activeConversationId,
     loadedMessages,
+    loadedExecutionStates,
     activeTab,
     isLoading,
     isListLoading,
@@ -85,6 +86,7 @@ export default function Home() {
             portfolio={portfolio}
             pools={pools}
             initialMessages={loadedMessages}
+            initialExecutionStates={loadedExecutionStates}
             activeConversationId={activeConversationId}
             onConversationSaved={handleConversationSaved}
             onMessagesChange={handleMessagesChange}

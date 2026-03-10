@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { UIMessage } from "ai";
+import type { ExecutionRecord } from "@/components/chat/ExecutionStateContext";
 
 export interface ConversationSummary {
   id: string;
@@ -15,6 +16,7 @@ export function useConversations(walletAddress: string | undefined) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [loadedMessages, setLoadedMessages] = useState<UIMessage[]>([]);
+  const [loadedExecutionStates, setLoadedExecutionStates] = useState<Record<string, ExecutionRecord>>({});
   const [activeTab, setActiveTab] = useState<SidebarTab>("portfolio");
   const [isLoading, setIsLoading] = useState(false);
   const [isListLoading, setIsListLoading] = useState(false);
@@ -72,12 +74,14 @@ export function useConversations(walletAddress: string | undefined) {
         // Wallet switched to a different address — reset chat
         setActiveConversationId(null);
         setLoadedMessages([]);
+        setLoadedExecutionStates({});
         setChatLoadKey((k) => k + 1);
       }
     } else {
       setConversations([]);
       setActiveConversationId(null);
       setLoadedMessages([]);
+      setLoadedExecutionStates({});
       setActiveTab("portfolio");
       hasAutoSwitchedRef.current = false;
       if (walletChanged) {
@@ -111,6 +115,7 @@ export function useConversations(walletAddress: string | undefined) {
     }
     setActiveConversationId(null);
     setLoadedMessages([]);
+    setLoadedExecutionStates({});
     setSaveError(null);
     setChatLoadKey((k) => k + 1);
   }, [walletAddress, activeConversationId]);
@@ -134,6 +139,7 @@ export function useConversations(walletAddress: string | undefined) {
               parts: m.parts,
             }))
           );
+          setLoadedExecutionStates(data.executionStates ?? {});
           setChatLoadKey((k) => k + 1);
         } else {
           showError("Failed to load conversation");
@@ -161,6 +167,7 @@ export function useConversations(walletAddress: string | undefined) {
           if (activeConversationId === id) {
             setActiveConversationId(null);
             setLoadedMessages([]);
+            setLoadedExecutionStates({});
             setChatLoadKey((k) => k + 1);
           }
         } else {
@@ -213,6 +220,7 @@ export function useConversations(walletAddress: string | undefined) {
     conversations,
     activeConversationId,
     loadedMessages,
+    loadedExecutionStates,
     activeTab,
     isLoading,
     isListLoading,

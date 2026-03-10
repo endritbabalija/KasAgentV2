@@ -1,6 +1,5 @@
 import { supabase } from "@/lib/supabase";
-
-const ETH_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+import { ETH_ADDRESS_RE } from "@/lib/validation";
 
 export async function GET(
   req: Request,
@@ -35,27 +34,45 @@ export async function GET(
       return Response.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    // Fetch messages
-    const { data: messages, error: msgError } = await supabase
-      .from("messages")
-      .select("id, role, parts, created_at")
-      .eq("conversation_id", id)
-      .order("created_at", { ascending: true });
+    // Fetch messages and execution states in parallel
+    const [msgResult, execResult] = await Promise.all([
+      supabase
+        .from("messages")
+        .select("id, role, parts, created_at")
+        .eq("conversation_id", id)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("execution_states")
+        .select("tool_call_id, state, tx_hash")
+        .eq("conversation_id", id),
+    ]);
 
-    if (msgError) {
-      console.error("[GET /api/conversations/[id]]", msgError);
+    if (msgResult.error) {
+      console.error("[GET /api/conversations/[id]]", msgResult.error);
       return Response.json({ error: "Failed to fetch messages" }, { status: 500 });
+    }
+
+    // Build execution state map (keyed by tool_call_id)
+    const executionStates: Record<string, { state: string; txHash?: string }> = {};
+    if (execResult.data) {
+      for (const row of execResult.data) {
+        executionStates[row.tool_call_id] = {
+          state: row.state,
+          ...(row.tx_hash ? { txHash: row.tx_hash } : {}),
+        };
+      }
     }
 
     return Response.json({
       id: convo.id,
       title: convo.title,
-      messages: messages.map((m) => ({
+      messages: msgResult.data.map((m) => ({
         id: m.id,
         role: m.role,
         parts: m.parts,
         createdAt: m.created_at,
       })),
+      executionStates,
     });
   } catch (err) {
     console.error("[GET /api/conversations/[id]] Unhandled error:", err);
