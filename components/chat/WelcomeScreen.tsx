@@ -53,16 +53,16 @@ export function WelcomeScreen({
   const suggestions = getSuggestions(hasBalances, hasPositions);
 
   return (
-    <div className="overflow-x-auto px-3 sm:px-4 pb-2 scrollbar-none">
-      <div className="flex gap-3 max-w-3xl mx-auto">
+    <div className="px-3 sm:px-4 pb-2">
+      <div className="flex gap-3 max-w-3xl mx-auto overflow-x-auto scrollbar-none">
         {suggestions.map((s) => (
           <button
             key={s.title}
             onClick={() => onSuggestionClick(s.title)}
-            className="shrink-0 w-[calc(50%-6px)] sm:w-auto sm:flex-1 sm:min-w-0 text-left px-4 py-3 bg-zinc-800/50 border border-zinc-700/50 rounded-2xl hover:bg-zinc-800 hover:border-zinc-600 transition-colors"
+            className="shrink-0 text-left px-4 py-3 bg-zinc-800/50 border border-zinc-700/50 rounded-2xl hover:bg-zinc-800 hover:border-zinc-600 transition-colors"
           >
-            <span className="block text-sm font-medium text-zinc-200 truncate">{s.title}</span>
-            <span className="block text-xs text-zinc-500 truncate">{s.subtitle}</span>
+            <span className="block text-sm font-medium text-zinc-200 whitespace-nowrap">{s.title}</span>
+            <span className="block text-xs text-zinc-500 whitespace-nowrap">{s.subtitle}</span>
           </button>
         ))}
       </div>
