@@ -17,6 +17,8 @@ import { TransactionHistoryCard } from "./cards/TransactionHistoryCard";
 import { MembershipStatusCard } from "./cards/MembershipStatusCard";
 import { SpyPortfolioCard } from "./cards/SpyPortfolioCard";
 import { PriceCard } from "./cards/PriceCard";
+import { KrokoSwapExecutionCard } from "./cards/KrokoSwapExecutionCard";
+import { SwapComparisonCard } from "./cards/SwapComparisonCard";
 import type {
   SwapQuoteResult,
   PrepareSwapResult,
@@ -35,9 +37,11 @@ import type {
   SpyPortfolioResult,
   TokenPriceResult,
   AllPairsResult,
+  KrokoPrepareSwapResult,
+  SwapComparisonResult,
 } from "@/lib/ai/tool-types";
 
-import { useExecutionState } from "./ExecutionStateContext";
+import { useExecutionState, type ExecutionRecord } from "./ExecutionStateContext";
 
 interface ToolPart {
   toolName: string;
@@ -46,6 +50,39 @@ interface ToolPart {
   errorText?: string;
   toolCallId?: string;
 }
+
+// Tool card registry: maps tool names to render functions
+type CardRenderer = (output: Record<string, unknown>, toolCallId?: string, execution?: ExecutionRecord) => React.ReactNode;
+
+const TOOL_CARD_REGISTRY: Record<string, CardRenderer> = {
+  // ZealousSwap tools
+  zealous_getSwapQuote: (o) => <SwapQuoteCard data={o as unknown as SwapQuoteResult} />,
+  zealous_prepareSwap: (o, id, ex) => <SwapExecutionCard data={o as unknown as PrepareSwapResult} toolCallId={id} executionState={ex} />,
+  zealous_getPoolReserves: (o) => <PoolReservesCard data={o as unknown as PoolReservesResult} />,
+  zealous_listAllPairs: (o) => <AllPairsCard data={o as unknown as AllPairsResult} />,
+  zealous_getActiveFarms: (o) => <FarmsTableCard data={o as unknown as ActiveFarmsResult} />,
+  zealous_getInfinityPoolRates: (o) => <InfinityPoolRatesCard data={o as unknown as InfinityPoolRatesResult} />,
+  zealous_discoverYieldOpportunities: (o) => <YieldOpportunitiesCard data={o as unknown as YieldOpportunitiesResult} />,
+  zealous_prepareAddLiquidity: (o, id, ex) => <AddLiquidityCard data={o as unknown as PrepareAddLiquidityResult} toolCallId={id} executionState={ex} />,
+  zealous_prepareRemoveLiquidity: (o, id, ex) => <RemoveLiquidityCard data={o as unknown as PrepareRemoveLiquidityResult} toolCallId={id} executionState={ex} />,
+  zealous_prepareFarmStake: (o, id, ex) => <FarmStakeCard data={o as unknown as PrepareFarmStakeResult} toolCallId={id} executionState={ex} />,
+  zealous_prepareFarmUnstake: (o, id, ex) => <FarmUnstakeCard data={o as unknown as PrepareFarmUnstakeResult} toolCallId={id} executionState={ex} />,
+  zealous_prepareInfinityStake: (o, id, ex) => <InfinityStakeCard data={o as unknown as PrepareInfinityStakeResult} toolCallId={id} executionState={ex} />,
+  zealous_prepareInfinityUnstake: (o, id, ex) => <InfinityUnstakeCard data={o as unknown as PrepareInfinityUnstakeResult} toolCallId={id} executionState={ex} />,
+  zealous_getMembershipStatus: (o) => <MembershipStatusCard data={o as unknown as MembershipStatusResult} />,
+
+  // KrokoSwap tools
+  kroko_getSwapQuote: (o) => <SwapQuoteCard data={o as unknown as SwapQuoteResult} />,
+  kroko_prepareSwap: (o, id, ex) => <KrokoSwapExecutionCard data={o as unknown as KrokoPrepareSwapResult} toolCallId={id} executionState={ex} />,
+
+  // Cross-protocol tools
+  compareSwapQuotes: (o) => <SwapComparisonCard data={o as unknown as SwapComparisonResult} />,
+
+  // Protocol-agnostic tools
+  getTransactionHistory: (o) => <TransactionHistoryCard data={o as unknown as TransactionHistoryResult} />,
+  spyOnWallet: (o) => <SpyPortfolioCard data={o as unknown as SpyPortfolioResult} />,
+  getTokenPrice: (o) => <PriceCard data={o as unknown as TokenPriceResult} />,
+};
 
 export function ToolPartRenderer({ part }: { part: ToolPart }) {
   const { getExecutionState } = useExecutionState();
@@ -75,50 +112,18 @@ export function ToolPartRenderer({ part }: { part: ToolPart }) {
     return <ToolErrorCard error={output.error as string} toolName={toolName} />;
   }
 
-  switch (toolName) {
-    case "getSwapQuote":
-      return <SwapQuoteCard data={output as unknown as SwapQuoteResult} />;
-    case "prepareSwap":
-      return <SwapExecutionCard data={output as unknown as PrepareSwapResult} toolCallId={toolCallId} executionState={execution} />;
-    case "getPoolReserves":
-      return <PoolReservesCard data={output as unknown as PoolReservesResult} />;
-    case "listAllPairs":
-      return <AllPairsCard data={output as unknown as AllPairsResult} />;
-    case "getActiveFarms":
-      return <FarmsTableCard data={output as unknown as ActiveFarmsResult} />;
-    case "getInfinityPoolRates":
-      return <InfinityPoolRatesCard data={output as unknown as InfinityPoolRatesResult} />;
-    case "discoverYieldOpportunities":
-      return <YieldOpportunitiesCard data={output as unknown as YieldOpportunitiesResult} />;
-    case "prepareAddLiquidity":
-      return <AddLiquidityCard data={output as unknown as PrepareAddLiquidityResult} toolCallId={toolCallId} executionState={execution} />;
-    case "prepareRemoveLiquidity":
-      return <RemoveLiquidityCard data={output as unknown as PrepareRemoveLiquidityResult} toolCallId={toolCallId} executionState={execution} />;
-    case "prepareFarmStake":
-      return <FarmStakeCard data={output as unknown as PrepareFarmStakeResult} toolCallId={toolCallId} executionState={execution} />;
-    case "prepareFarmUnstake":
-      return <FarmUnstakeCard data={output as unknown as PrepareFarmUnstakeResult} toolCallId={toolCallId} executionState={execution} />;
-    case "prepareInfinityStake":
-      return <InfinityStakeCard data={output as unknown as PrepareInfinityStakeResult} toolCallId={toolCallId} executionState={execution} />;
-    case "prepareInfinityUnstake":
-      return <InfinityUnstakeCard data={output as unknown as PrepareInfinityUnstakeResult} toolCallId={toolCallId} executionState={execution} />;
-    case "getTransactionHistory":
-      return <TransactionHistoryCard data={output as unknown as TransactionHistoryResult} />;
-    case "getMembershipStatus":
-      return <MembershipStatusCard data={output as unknown as MembershipStatusResult} />;
-    case "spyOnWallet":
-      return <SpyPortfolioCard data={output as unknown as SpyPortfolioResult} />;
-    case "getTokenPrice":
-      return <PriceCard data={output as unknown as TokenPriceResult} />;
-    default:
-      // Fallback: render raw JSON for unknown tools
-      return (
-        <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
-          <div className="text-xs text-zinc-500 uppercase tracking-wide mb-2">{toolName}</div>
-          <pre className="text-xs text-zinc-400 font-mono overflow-x-auto whitespace-pre-wrap">
-            {JSON.stringify(output, null, 2)}
-          </pre>
-        </div>
-      );
+  const renderer = TOOL_CARD_REGISTRY[toolName];
+  if (renderer && output) {
+    return <>{renderer(output, toolCallId, execution)}</>;
   }
+
+  // Fallback: render raw JSON for unknown tools
+  return (
+    <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
+      <div className="text-xs text-zinc-500 uppercase tracking-wide mb-2">{toolName}</div>
+      <pre className="text-xs text-zinc-400 font-mono overflow-x-auto whitespace-pre-wrap">
+        {JSON.stringify(output, null, 2)}
+      </pre>
+    </div>
+  );
 }

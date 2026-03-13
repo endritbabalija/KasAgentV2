@@ -5,19 +5,20 @@ export interface QuickAction {
 }
 
 const ACTION_TOOLS = new Set([
-  "prepareSwap",
+  "zealous_prepareSwap",
+  "kroko_prepareSwap",
   "executeSwap",
-  "prepareAddLiquidity",
+  "zealous_prepareAddLiquidity",
   "executeAddLiquidity",
-  "prepareRemoveLiquidity",
+  "zealous_prepareRemoveLiquidity",
   "executeRemoveLiquidity",
-  "prepareFarmDeposit",
+  "zealous_prepareFarmStake",
   "executeFarmDeposit",
-  "prepareFarmWithdraw",
+  "zealous_prepareFarmUnstake",
   "executeFarmWithdraw",
-  "prepareStake",
+  "zealous_prepareInfinityStake",
   "executeStake",
-  "prepareUnstake",
+  "zealous_prepareInfinityUnstake",
   "executeUnstake",
 ]);
 
@@ -30,7 +31,7 @@ export function getQuickActions(
   const out = output as Record<string, unknown> | undefined;
 
   switch (toolName) {
-    case "getSwapQuote": {
+    case "zealous_getSwapQuote": {
       const tokenOut = (out?.tokenOut as string) ?? "";
       return [
         {
@@ -41,7 +42,7 @@ export function getQuickActions(
         { label: "Find better rate", message: "Find a better swap rate", variant: "secondary" },
       ];
     }
-    case "getPoolReserves":
+    case "zealous_getPoolReserves":
       return [
         {
           label: "Check farms",
@@ -49,7 +50,7 @@ export function getQuickActions(
           variant: "primary",
         },
       ];
-    case "listAllPairs":
+    case "zealous_listAllPairs":
       return [
         {
           label: "Best yield",
@@ -62,7 +63,7 @@ export function getQuickActions(
           variant: "secondary",
         },
       ];
-    case "getActiveFarms":
+    case "zealous_getActiveFarms":
       return [
         {
           label: "Compare staking",
@@ -70,7 +71,7 @@ export function getQuickActions(
           variant: "secondary",
         },
       ];
-    case "getInfinityPoolRates":
+    case "zealous_getInfinityPoolRates":
       return [
         {
           label: "Best yield",
@@ -78,7 +79,7 @@ export function getQuickActions(
           variant: "primary",
         },
       ];
-    case "discoverYieldOpportunities":
+    case "zealous_discoverYieldOpportunities":
       return [
         {
           label: "Show top option",
@@ -86,6 +87,25 @@ export function getQuickActions(
           variant: "primary",
         },
       ];
+    case "kroko_getSwapQuote": {
+      const tokenOut = (out?.tokenOut as string) ?? "";
+      return [
+        {
+          label: "Compare rates",
+          message: `Compare swap rates across DEXes for ${tokenOut || "this token"}`,
+          variant: "primary",
+        },
+      ];
+    }
+    case "compareSwapQuotes": {
+      return [
+        {
+          label: "Execute best",
+          message: "Swap on the recommended DEX",
+          variant: "primary",
+        },
+      ];
+    }
     case "getTransactionHistory":
       return [
         {

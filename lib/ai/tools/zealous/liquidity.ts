@@ -6,7 +6,7 @@ import {
   factoryAbi,
   pairAbi,
 } from "@/config/abis";
-import type { RiskFlag, RiskLevel, ContractInfo } from "../tool-types";
+import type { RiskFlag, RiskLevel, ContractInfo } from "../../tool-types";
 import {
   client,
   resolveTokenAddress,
@@ -14,11 +14,11 @@ import {
   estimateGasCost,
   calculateMinAmount,
   checkAllowance,
-} from "./helpers";
+} from "../shared/helpers";
 import { mcResult } from "@/lib/multicall";
 
-export const liquidityTools = {
-  getPoolReserves: tool({
+export const zealousLiquidityTools = {
+  zealous_getPoolReserves: tool({
     description:
       "Get the current reserves and liquidity for a trading pair on ZealousSwap.",
     inputSchema: z.object({
@@ -85,7 +85,7 @@ export const liquidityTools = {
     },
   }),
 
-  prepareAddLiquidity: tool({
+  zealous_prepareAddLiquidity: tool({
     description:
       "Prepare an add-liquidity transaction for a ZealousSwap pair. Calculates optimal amounts, checks allowances, and returns tx params.",
     inputSchema: z.object({
@@ -279,7 +279,7 @@ export const liquidityTools = {
     },
   }),
 
-  prepareRemoveLiquidity: tool({
+  zealous_prepareRemoveLiquidity: tool({
     description:
       "Prepare a remove-liquidity transaction for a ZealousSwap pair. Calculates expected token outputs.",
     inputSchema: z.object({

@@ -1,23 +1,15 @@
-import { swapTools } from "./swap";
-import { liquidityTools } from "./liquidity";
-import { pairTools } from "./pairs";
-import { farmTools } from "./farms";
-import { stakingTools } from "./staking";
-import { yieldTools } from "./yield";
+import { zealousTools } from "./zealous";
+import { krokoTools } from "./kroko";
+import { compareTools } from "./compare";
 import { historyTools } from "./history";
-import { membershipTools } from "./membership";
 import { spyTools } from "./spy";
 import { oracleTools } from "./oracle";
 
 export const aiTools = {
-  ...swapTools,
-  ...liquidityTools,
-  ...pairTools,
-  ...farmTools,
-  ...stakingTools,
-  ...yieldTools,
+  ...zealousTools,
+  ...krokoTools,
+  ...compareTools,
   ...historyTools,
-  ...membershipTools,
   ...spyTools,
   ...oracleTools,
 };

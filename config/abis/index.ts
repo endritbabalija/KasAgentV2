@@ -11,3 +11,4 @@ export {
 export { discountManagerAbi } from "./discountManager";
 export { membershipAbi } from "./membership";
 export { nftStakingAbi } from "./nftStaking";
+export { permit2Abi } from "./permit2";

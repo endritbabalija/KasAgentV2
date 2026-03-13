@@ -3,7 +3,9 @@ export interface SwapQuoteResult {
   tokenOut: string;
   amountIn: string;
   amountOut: string;
-  path: string[];
+  path?: string[];
+  route?: string;
+  protocol?: string;
   error?: string;
 }
 
@@ -445,5 +447,67 @@ export interface SpyPortfolioResult {
   stakingPositions: SpyStakingPosition[];
   discountStatus: { isEligible: boolean; source: string };
   fetchedAt: string;
+  error?: string;
+}
+
+// --- KrokoSwap types ---
+
+export interface KrokoSwapQuoteResult {
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  amountOut: string;
+  priceImpact: string;
+  route: string;
+  protocol: "kroko";
+  error?: string;
+}
+
+export interface KrokoPrepareSwapTx {
+  to: string;
+  data: string;
+  value: string;
+}
+
+export interface KrokoPrepareSwapResult {
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  amountOut: string;
+  amountOutMin: string;
+  slippage: number;
+  priceImpact: string;
+  route: string;
+  gasEstimate: string;
+  riskFlags: RiskFlag[];
+  contractInfo: ContractInfo;
+  needsTokenApproval: boolean;
+  needsPermit2Approval: boolean;
+  permit2Address: string;
+  universalRouterAddress: string;
+  tokenInAddress: string;
+  isNativeIn: boolean;
+  tx: KrokoPrepareSwapTx;
+  error?: string;
+}
+
+// --- Swap Comparison types ---
+
+export interface SwapComparisonQuote {
+  protocol: string;
+  protocolName: string;
+  amountOut: string;
+  priceImpact: string;
+  route: string;
+  isBest: boolean;
+  error?: string;
+}
+
+export interface SwapComparisonResult {
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  quotes: SwapComparisonQuote[];
+  recommendation: string;
   error?: string;
 }

@@ -13,9 +13,9 @@ import type {
   YieldOpportunity,
   RiskFlag,
   RiskLevel,
-} from "../tool-types";
+} from "../../tool-types";
 import type { Token } from "@/config/tokens";
-import { client } from "./helpers";
+import { client } from "../shared/helpers";
 import { getDiscoveryData, type PairDiscoveryData } from "@/lib/token-registry";
 import { mcResult } from "@/lib/multicall";
 
@@ -360,8 +360,8 @@ function rankAndFilter(opportunities: YieldOpportunity[], filterToken?: string) 
   return filtered;
 }
 
-export const yieldTools = {
-  discoverYieldOpportunities: tool({
+export const zealousYieldTools = {
+  zealous_discoverYieldOpportunities: tool({
     description:
       "Scan all ZealousSwap yield opportunities (farms + InfinityPools), compute APYs from on-chain data, assess risks, and return a ranked comparison. Use when the user asks about yield, best returns, where to invest, or DeFi opportunities.",
     inputSchema: z.object({

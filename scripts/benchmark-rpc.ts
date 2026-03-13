@@ -91,12 +91,12 @@ async function main() {
   const { getAllTokens, getDiscoveryData } = await import(
     "@/lib/token-registry"
   );
-  const { yieldTools } = await import("@/lib/ai/tools/yield");
-  const { liquidityTools } = await import("@/lib/ai/tools/liquidity");
-  const { farmTools } = await import("@/lib/ai/tools/farms");
-  const { stakingTools } = await import("@/lib/ai/tools/staking");
+  const { zealousYieldTools: yieldTools } = await import("@/lib/ai/tools/zealous/yield");
+  const { zealousLiquidityTools: liquidityTools } = await import("@/lib/ai/tools/zealous/liquidity");
+  const { zealousFarmTools: farmTools } = await import("@/lib/ai/tools/zealous/farms");
+  const { zealousStakingTools: stakingTools } = await import("@/lib/ai/tools/zealous/staking");
   const { oracleTools } = await import("@/lib/ai/tools/oracle");
-  const { membershipTools } = await import("@/lib/ai/tools/membership");
+  const { zealousMembershipTools: membershipTools } = await import("@/lib/ai/tools/zealous/membership");
 
   // ── Phase 1: Token Discovery ──
   // Cold: 1 readContract (allPairsLength) + 3 multicalls = 4 RPCs
@@ -110,25 +110,25 @@ async function main() {
   // ── Phase 2: Yield ──
   // Pairs from cache (0 RPCs) + mc1 (yield reads) + mc2 (farm poolInfos) = 2
   await bench("Yield discovery", 2, () =>
-    callTool(yieldTools.discoverYieldOpportunities, {}),
+    callTool(yieldTools.zealous_discoverYieldOpportunities, {}),
   );
 
   // ── Phase 3: Farms ──
   // mc1 (4 globals) + mc2 (poolInfo per pool) = 2
   await bench("getActiveFarms", 2, () =>
-    callTool(farmTools.getActiveFarms, {}),
+    callTool(farmTools.zealous_getActiveFarms, {}),
   );
 
   // ── Phase 4: Staking ──
   // 1 multicall with 8 reads
   await bench("getInfinityPoolRates", 1, () =>
-    callTool(stakingTools.getInfinityPoolRates, {}),
+    callTool(stakingTools.zealous_getInfinityPoolRates, {}),
   );
 
   // ── Phase 5: Liquidity ──
   // getPair (1) + multicall reserves/token0/totalSupply (1) = 2
   await bench("getPoolReserves (KAS/ZEAL)", 2, () =>
-    callTool(liquidityTools.getPoolReserves, { tokenA: "KAS", tokenB: "ZEAL" }),
+    callTool(liquidityTools.zealous_getPoolReserves, { tokenA: "KAS", tokenB: "ZEAL" }),
   );
 
   // ── Phase 6: Oracle ──
@@ -140,7 +140,7 @@ async function main() {
   // ── Phase 7: Membership ──
   // 1 multicall (9 reads) + 1 discount check = 2  (run in parallel)
   await bench("getMembershipStatus", 2, () =>
-    callTool(membershipTools.getMembershipStatus, {
+    callTool(membershipTools.zealous_getMembershipStatus, {
       walletAddress: "0x0000000000000000000000000000000000000001",
     }),
   );

@@ -1,10 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { useReadContract, useReadContracts } from "wagmi";
-import { CONTRACTS } from "@/config/contracts";
-import { factoryAbi } from "@/config/abis";
-import { pairAbi } from "@/config/abis";
+import { useReadContracts } from "wagmi";
+import { getAllV2Factories, type ProtocolId } from "@/config/protocols";
+import { factoryAbi, pairAbi } from "@/config/abis";
 
 export interface PairInfo {
   address: `0x${string}`;
@@ -13,87 +12,163 @@ export interface PairInfo {
   reserve0: bigint;
   reserve1: bigint;
   totalSupply: bigint;
+  protocolId: string;
 }
 
+// Stable reference so the factories array doesn't cause re-renders
+const V2_FACTORIES = getAllV2Factories();
+
 export function useAllPairs(enabled: boolean = true) {
-  // Step 1: Get pair count
+  // ── Step 1: Get pair counts from ALL V2 factories in a single multicall ──
+  const pairCountContracts = useMemo(
+    () =>
+      V2_FACTORIES.map((f) => ({
+        address: f.address,
+        abi: factoryAbi,
+        functionName: "allPairsLength" as const,
+      })),
+    [],
+  );
+
   const {
-    data: pairCount,
-    isLoading: countLoading,
-    refetch: countRefetch,
-  } = useReadContract({
-    address: CONTRACTS.FACTORY,
-    abi: factoryAbi,
-    functionName: "allPairsLength",
+    data: pairCountsRaw,
+    isLoading: countsLoading,
+    refetch: countsRefetch,
+  } = useReadContracts({
+    contracts: pairCountContracts,
     query: { enabled },
   });
 
-  // Step 2: Get pair addresses
-  const pairIndices = useMemo(() => {
-    if (pairCount === undefined) return [];
-    return Array.from({ length: Number(pairCount) }, (_, i) => i);
-  }, [pairCount]);
+  // Parse counts and build a mapping: for each factory, how many pairs it has
+  const factoryCounts = useMemo(() => {
+    if (!pairCountsRaw) return [];
+    return V2_FACTORIES.map((f, i) => ({
+      ...f,
+      count:
+        pairCountsRaw[i]?.status === "success"
+          ? Number(pairCountsRaw[i].result as bigint)
+          : 0,
+    }));
+  }, [pairCountsRaw]);
+
+  const totalPairCount = useMemo(
+    () => factoryCounts.reduce((sum, f) => sum + f.count, 0),
+    [factoryCounts],
+  );
+
+  // ── Step 2: Get pair addresses from ALL factories in a single multicall ──
+  // We flatten calls for all factories and track which factory each call belongs to
+  const { pairAddressContracts, addressOwnership } = useMemo(() => {
+    const contracts: {
+      address: `0x${string}`;
+      abi: typeof factoryAbi;
+      functionName: "allPairs";
+      args: readonly [bigint];
+    }[] = [];
+    // Track which factory (by index in V2_FACTORIES) owns each call
+    const ownership: { factoryIdx: number; protocolId: ProtocolId }[] = [];
+
+    factoryCounts.forEach((f, factoryIdx) => {
+      for (let i = 0; i < f.count; i++) {
+        contracts.push({
+          address: f.address,
+          abi: factoryAbi,
+          functionName: "allPairs" as const,
+          args: [BigInt(i)] as const,
+        });
+        ownership.push({ factoryIdx, protocolId: f.protocolId });
+      }
+    });
+
+    return { pairAddressContracts: contracts, addressOwnership: ownership };
+  }, [factoryCounts]);
 
   const {
     data: pairAddressesRaw,
     isLoading: addressesLoading,
     refetch: addressesRefetch,
   } = useReadContracts({
-    contracts: pairIndices.map((i) => ({
-      address: CONTRACTS.FACTORY,
-      abi: factoryAbi,
-      functionName: "allPairs" as const,
-      args: [BigInt(i)] as const,
-    })),
-    query: { enabled: enabled && pairIndices.length > 0 },
+    contracts: pairAddressContracts,
+    query: { enabled: enabled && pairAddressContracts.length > 0 },
   });
 
+  // Parse addresses, keeping the protocolId tag for each
   const pairAddresses = useMemo(() => {
     if (!pairAddressesRaw) return [];
     return pairAddressesRaw
-      .filter((r) => r.status === "success")
-      .map((r) => r.result as `0x${string}`);
-  }, [pairAddressesRaw]);
+      .map((r, i) => ({
+        address:
+          r.status === "success" ? (r.result as `0x${string}`) : undefined,
+        protocolId: addressOwnership[i].protocolId,
+      }))
+      .filter(
+        (p): p is { address: `0x${string}`; protocolId: ProtocolId } =>
+          p.address !== undefined,
+      );
+  }, [pairAddressesRaw, addressOwnership]);
 
-  // Step 3: Get pair details (token0, token1, reserves, totalSupply per pair)
+  // ── Step 3: Get pair details for ALL pairs in a single multicall ──
+  const pairDetailContracts = useMemo(
+    () =>
+      pairAddresses.flatMap((p) => [
+        {
+          address: p.address,
+          abi: pairAbi,
+          functionName: "token0" as const,
+        },
+        {
+          address: p.address,
+          abi: pairAbi,
+          functionName: "token1" as const,
+        },
+        {
+          address: p.address,
+          abi: pairAbi,
+          functionName: "getReserves" as const,
+        },
+        {
+          address: p.address,
+          abi: pairAbi,
+          functionName: "totalSupply" as const,
+        },
+      ]),
+    [pairAddresses],
+  );
+
   const {
     data: pairDetailsRaw,
     isLoading: detailsLoading,
     refetch: detailsRefetch,
   } = useReadContracts({
-    contracts: pairAddresses.flatMap((addr) => [
-      { address: addr, abi: pairAbi, functionName: "token0" as const },
-      { address: addr, abi: pairAbi, functionName: "token1" as const },
-      { address: addr, abi: pairAbi, functionName: "getReserves" as const },
-      { address: addr, abi: pairAbi, functionName: "totalSupply" as const },
-    ]),
+    contracts: pairDetailContracts,
     query: { enabled: enabled && pairAddresses.length > 0 },
   });
 
   const pairs = useMemo<PairInfo[]>(() => {
     if (!pairDetailsRaw || !pairAddresses.length) return [];
-    return pairAddresses.map((addr, i) => {
+    return pairAddresses.map((p, i) => {
       const base = i * 4;
       const reserves = pairDetailsRaw[base + 2]?.result as
         | readonly [bigint, bigint, bigint]
         | undefined;
       return {
-        address: addr,
+        address: p.address,
         token0: (pairDetailsRaw[base]?.result as `0x${string}`) ?? "0x",
         token1: (pairDetailsRaw[base + 1]?.result as `0x${string}`) ?? "0x",
         reserve0: reserves?.[0] ?? 0n,
         reserve1: reserves?.[1] ?? 0n,
         totalSupply: (pairDetailsRaw[base + 3]?.result as bigint) ?? 0n,
+        protocolId: p.protocolId,
       };
     });
   }, [pairDetailsRaw, pairAddresses]);
 
   return {
     pairs,
-    pairCount: pairCount !== undefined ? Number(pairCount) : 0,
-    isLoading: countLoading || addressesLoading || detailsLoading,
+    pairCount: totalPairCount,
+    isLoading: countsLoading || addressesLoading || detailsLoading,
     refetch: () => {
-      countRefetch();
+      countsRefetch();
       addressesRefetch();
       detailsRefetch();
     },

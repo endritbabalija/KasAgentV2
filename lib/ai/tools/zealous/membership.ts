@@ -3,11 +3,11 @@ import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
 import { membershipAbi, nftStakingAbi } from "@/config/abis";
 import { checkDiscountEligibility } from "@/lib/discount";
-import { client } from "./helpers";
+import { client } from "../shared/helpers";
 import { mcResult } from "@/lib/multicall";
 
-export const membershipTools = {
-  getMembershipStatus: tool({
+export const zealousMembershipTools = {
+  zealous_getMembershipStatus: tool({
     description:
       "Get the user's full ZealousSwap discount eligibility status including membership details, NFT staking power, and overall discount qualification.",
     inputSchema: z.object({

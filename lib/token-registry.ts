@@ -1,4 +1,5 @@
 import { CONTRACTS } from "@/config/contracts";
+import { getAllV2Factories, type ProtocolId } from "@/config/protocols";
 import { factoryAbi, pairAbi, erc20Abi } from "@/config/abis";
 import type { Token } from "@/config/tokens";
 import { KAS_NATIVE } from "@/config/tokens";
@@ -11,6 +12,7 @@ export interface PairDiscoveryData {
   token1: string;
   reserve0: bigint;
   reserve1: bigint;
+  protocolId: ProtocolId;
 }
 
 interface DiscoveryCache {
@@ -22,29 +24,31 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 let cached: DiscoveryCache | null = null;
 let cachedAt = 0;
 
-async function discoverAll(): Promise<DiscoveryCache> {
-  const now = Date.now();
-  if (cached && now - cachedAt < CACHE_TTL) return cached;
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
 
-  // Round 1: 1 RPC — need pair count before we can batch the rest
+/** Discover pairs from a single V2 factory. */
+async function discoverFactory(
+  factoryAddress: `0x${string}`,
+  protocolId: ProtocolId
+): Promise<{ pairs: PairDiscoveryData[]; uniqueAddresses: Set<string>; wkasLiquidity: Map<string, bigint> }> {
+  const wkasAddr = CONTRACTS.WKAS.toLowerCase();
+
+  // Round 1: pair count
   const pairsLength = (await client.readContract({
-    address: CONTRACTS.FACTORY,
+    address: factoryAddress,
     abi: factoryAbi,
     functionName: "allPairsLength",
   })) as bigint;
 
   const n = Number(pairsLength);
   if (n === 0) {
-    const result: DiscoveryCache = { tokens: [KAS_NATIVE], pairs: [] };
-    cached = result;
-    cachedAt = now;
-    return result;
+    return { pairs: [], uniqueAddresses: new Set(), wkasLiquidity: new Map() };
   }
 
-  // Round 2: 1 multicall — batch all allPairs(i)
+  // Round 2: batch all allPairs(i)
   const pairAddressResults = await client.multicall({
     contracts: Array.from({ length: n }, (_, i) => ({
-      address: CONTRACTS.FACTORY,
+      address: factoryAddress,
       abi: factoryAbi,
       functionName: "allPairs" as const,
       args: [BigInt(i)] as const,
@@ -52,12 +56,11 @@ async function discoverAll(): Promise<DiscoveryCache> {
     allowFailure: true,
   });
 
-  const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
   const pairAddresses = pairAddressResults
     .map((r) => mcResult<`0x${string}`>(r, ZERO_ADDR))
     .filter((a) => a !== ZERO_ADDR);
 
-  // Round 3: 1 multicall — batch token0 + token1 + getReserves per pair
+  // Round 3: token0 + token1 + getReserves per pair
   const pairDetailResults = await client.multicall({
     contracts: pairAddresses.flatMap((addr) => [
       { address: addr, abi: pairAbi, functionName: "token0" as const },
@@ -68,7 +71,6 @@ async function discoverAll(): Promise<DiscoveryCache> {
   });
 
   const uniqueAddresses = new Set<string>();
-  const wkasAddr = CONTRACTS.WKAS.toLowerCase();
   const wkasLiquidity = new Map<string, bigint>();
   const pairs: PairDiscoveryData[] = [];
 
@@ -87,6 +89,7 @@ async function discoverAll(): Promise<DiscoveryCache> {
       token1: t1,
       reserve0: r0,
       reserve1: r1,
+      protocolId,
     });
 
     uniqueAddresses.add(t0);
@@ -102,8 +105,43 @@ async function discoverAll(): Promise<DiscoveryCache> {
     }
   }
 
+  return { pairs, uniqueAddresses, wkasLiquidity };
+}
+
+async function discoverAll(): Promise<DiscoveryCache> {
+  const now = Date.now();
+  if (cached && now - cachedAt < CACHE_TTL) return cached;
+
+  const factories = getAllV2Factories();
+
+  // Discover pairs from all factories in parallel
+  const factoryResults = await Promise.all(
+    factories.map((f) => discoverFactory(f.address, f.protocolId))
+  );
+
+  // Merge results
+  const allPairs: PairDiscoveryData[] = [];
+  const allUniqueAddresses = new Set<string>();
+  const mergedWkasLiquidity = new Map<string, bigint>();
+
+  for (const result of factoryResults) {
+    allPairs.push(...result.pairs);
+    for (const addr of result.uniqueAddresses) allUniqueAddresses.add(addr);
+    for (const [addr, liq] of result.wkasLiquidity) {
+      const prev = mergedWkasLiquidity.get(addr) ?? 0n;
+      if (liq > prev) mergedWkasLiquidity.set(addr, liq);
+    }
+  }
+
+  if (allPairs.length === 0) {
+    const result: DiscoveryCache = { tokens: [KAS_NATIVE], pairs: [] };
+    cached = result;
+    cachedAt = now;
+    return result;
+  }
+
   // Round 4: 1 multicall — batch name + symbol + decimals per unique token
-  const addresses = Array.from(uniqueAddresses);
+  const addresses = Array.from(allUniqueAddresses);
   const metadataResults = await client.multicall({
     contracts: addresses.flatMap((addr) => [
       { address: addr as `0x${string}`, abi: erc20Abi, functionName: "name" as const },
@@ -144,9 +182,9 @@ async function discoverAll(): Promise<DiscoveryCache> {
       continue;
     }
     let best = candidates[0];
-    let bestLiq = wkasLiquidity.get(best.address!.toLowerCase()) ?? 0n;
+    let bestLiq = mergedWkasLiquidity.get(best.address!.toLowerCase()) ?? 0n;
     for (let i = 1; i < candidates.length; i++) {
-      const liq = wkasLiquidity.get(candidates[i].address!.toLowerCase()) ?? 0n;
+      const liq = mergedWkasLiquidity.get(candidates[i].address!.toLowerCase()) ?? 0n;
       if (liq > bestLiq) {
         best = candidates[i];
         bestLiq = liq;
@@ -157,7 +195,7 @@ async function discoverAll(): Promise<DiscoveryCache> {
 
   const result: DiscoveryCache = {
     tokens: [KAS_NATIVE, ...deduped],
-    pairs,
+    pairs: allPairs,
   };
 
   cached = result;

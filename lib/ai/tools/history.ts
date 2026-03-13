@@ -1,7 +1,7 @@
 import { formatUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
-import { CONTRACTS } from "@/config/contracts";
+import { PROTOCOLS } from "@/config/protocols";
 import { EXPLORER_URL } from "@/config/chains";
 import { getAllTokens } from "@/lib/token-registry";
 import { serverEnv } from "@/lib/env";
@@ -41,16 +41,25 @@ const METHOD_SELECTORS: Record<string, string> = {
   "0x23b872dd": "Transfer",
 };
 
-// Contract address -> label
-const KNOWN_CONTRACTS: Record<string, string> = {
-  [CONTRACTS.ROUTER.toLowerCase()]: "ZealousSwap Router",
-  [CONTRACTS.FACTORY.toLowerCase()]: "ZealousSwap Factory",
-  [CONTRACTS.MASTER_CHEF.toLowerCase()]: "MasterChef",
-  [CONTRACTS.INFINITY_POOL_ZEAL.toLowerCase()]: "ZEAL InfinityPool",
-  [CONTRACTS.INFINITY_POOL_NACHO.toLowerCase()]: "NACHO InfinityPool",
-  [CONTRACTS.INFINITY_POOL_KASPER.toLowerCase()]: "KASPER InfinityPool",
-  [CONTRACTS.WKAS.toLowerCase()]: "WKAS",
-};
+// Contract address -> label (built dynamically from protocol registry)
+function buildKnownContracts(): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const protocol of Object.values(PROTOCOLS)) {
+    for (const [key, addr] of Object.entries(protocol.contracts)) {
+      map[addr.toLowerCase()] = `${protocol.shortName} ${formatContractName(key)}`;
+    }
+  }
+  return map;
+}
+
+function formatContractName(key: string): string {
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (s) => s.toUpperCase())
+    .trim();
+}
+
+const KNOWN_CONTRACTS = buildKnownContracts();
 
 export const historyTools = {
   getTransactionHistory: tool({

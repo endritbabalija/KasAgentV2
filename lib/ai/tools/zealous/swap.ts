@@ -2,26 +2,22 @@ import { formatUnits, parseUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
-import {
-  factoryAbi,
-  pairAbi,
-} from "@/config/abis";
+import { factoryAbi, pairAbi } from "@/config/abis";
 import { checkDiscountEligibility } from "@/lib/discount";
-import type { RiskFlag, ContractInfo } from "../tool-types";
+import type { RiskFlag, ContractInfo } from "../../tool-types";
 import {
   client,
   resolveTokenAddress,
   getTokenDecimals,
-  calculatePriceImpact,
   estimateGasCost,
   calculateMinAmount,
   checkAllowance,
-  findBestPath,
-} from "./helpers";
+} from "../shared/helpers";
+import { findBestPath, calculatePriceImpact } from "./helpers";
 import { mcResult } from "@/lib/multicall";
 
-export const swapTools = {
-  getSwapQuote: tool({
+export const zealousSwapTools = {
+  zealous_getSwapQuote: tool({
     description:
       "Get a swap quote for exchanging one token for another on ZealousSwap. Returns the expected output amount. Automatically routes through WKAS if no direct pair exists.",
     inputSchema: z.object({
@@ -80,7 +76,7 @@ export const swapTools = {
     },
   }),
 
-  prepareSwap: tool({
+  zealous_prepareSwap: tool({
     description:
       "Prepare a token swap transaction for the user to execute in their wallet. Returns all transaction parameters needed for on-chain execution. Automatically routes through WKAS if no direct pair exists.",
     inputSchema: z.object({

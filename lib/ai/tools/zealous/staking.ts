@@ -8,12 +8,12 @@ import {
   infinityPoolKasperAbi,
   erc20Abi,
 } from "@/config/abis";
-import type { RiskFlag, RiskLevel } from "../tool-types";
-import { client, resolveTokenAddress, getTokenDecimals, estimateGasCost, checkAllowance } from "./helpers";
+import type { RiskFlag, RiskLevel } from "../../tool-types";
+import { client, resolveTokenAddress, getTokenDecimals, estimateGasCost } from "../shared/helpers";
 import { mcResult } from "@/lib/multicall";
 
-export const stakingTools = {
-  getInfinityPoolRates: tool({
+export const zealousStakingTools = {
+  zealous_getInfinityPoolRates: tool({
     description:
       "Get the current exchange rates, total staked amounts, and emission info for all InfinityPool staking pools (ZEAL, NACHO, KASPER).",
     inputSchema: z.object({}),
@@ -62,7 +62,7 @@ export const stakingTools = {
     },
   }),
 
-  prepareInfinityStake: tool({
+  zealous_prepareInfinityStake: tool({
     description:
       "Prepare a single-sided staking transaction for a ZealousSwap InfinityPool. Supports ZEAL, NACHO, and KASPER pools.",
     inputSchema: z.object({
@@ -156,7 +156,7 @@ export const stakingTools = {
     },
   }),
 
-  prepareInfinityUnstake: tool({
+  zealous_prepareInfinityUnstake: tool({
     description:
       "Prepare an unstake transaction from a ZealousSwap InfinityPool. Burns xTokens to receive underlying tokens. Supports ZEAL, NACHO, and KASPER pools.",
     inputSchema: z.object({

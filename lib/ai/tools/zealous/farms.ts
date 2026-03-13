@@ -7,12 +7,12 @@ import {
   pairAbi,
   erc20Abi,
 } from "@/config/abis";
-import type { RiskFlag, RiskLevel } from "../tool-types";
-import { client, estimateGasCost, addressToSymbol } from "./helpers";
+import type { RiskFlag, RiskLevel } from "../../tool-types";
+import { client, estimateGasCost, addressToSymbol } from "../shared/helpers";
 import { mcResult } from "@/lib/multicall";
 
-export const farmTools = {
-  getActiveFarms: tool({
+export const zealousFarmTools = {
+  zealous_getActiveFarms: tool({
     description:
       "Get a list of all active farming pools on ZealousSwap MasterChef, including allocation points and total deposits.",
     inputSchema: z.object({}),
@@ -84,7 +84,7 @@ export const farmTools = {
     },
   }),
 
-  prepareFarmStake: tool({
+  zealous_prepareFarmStake: tool({
     description:
       "Prepare a farm deposit (stake LP tokens) transaction for ZealousSwap MasterChef. Checks allowance, reads pending rewards and locking period.",
     inputSchema: z.object({
@@ -207,7 +207,7 @@ export const farmTools = {
     },
   }),
 
-  prepareFarmUnstake: tool({
+  zealous_prepareFarmUnstake: tool({
     description:
       "Prepare a farm withdrawal (unstake LP tokens) from ZealousSwap MasterChef. Checks if withdrawal is allowed and shows pending rewards that will be auto-claimed.",
     inputSchema: z.object({

@@ -6,8 +6,8 @@ import { getDiscoveryData } from "@/lib/token-registry";
 
 const DEFAULT_MIN_LIQUIDITY_KAS = 100;
 
-export const pairTools = {
-  listAllPairs: tool({
+export const zealousPairTools = {
+  zealous_listAllPairs: tool({
     description:
       "List available trading pairs on ZealousSwap with liquidity data. Filters out dust/empty pools by default. Use when the user asks what pairs exist, available swap routes, which tokens can be traded, or to see all pools. Prefer this over multiple getPoolReserves calls.",
     inputSchema: z.object({

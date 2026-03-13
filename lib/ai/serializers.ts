@@ -18,6 +18,7 @@ export interface SerializedPortfolio {
     lpBalance: string;
     token0Amount: string;
     token1Amount: string;
+    protocol?: string;
   }[];
   farmPositions: {
     pid: number;
@@ -64,6 +65,7 @@ export function serializePortfolio(
         lpBalance: fmt(lp.lpBalance),
         token0Amount: fmt(lp.token0Amount),
         token1Amount: fmt(lp.token1Amount),
+        ...("protocolId" in lp && lp.protocolId ? { protocol: lp.protocolId as string } : {}),
       })),
     farmPositions: farmPositions
       .filter((fp) => fp.stakedAmount > 0n || fp.pendingReward > 0n)

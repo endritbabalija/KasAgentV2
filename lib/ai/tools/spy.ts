@@ -2,6 +2,7 @@ import { z } from "zod";
 import { tool } from "ai";
 import { formatEther, formatUnits } from "viem";
 import { CONTRACTS } from "@/config/contracts";
+import { getAllV2Factories } from "@/config/protocols";
 import {
   erc20Abi,
   factoryAbi,
@@ -14,6 +15,7 @@ import {
 import { getAllTokens, addressToSymbol } from "@/lib/token-registry";
 import { checkDiscountEligibility } from "@/lib/discount";
 import { client } from "./helpers";
+import { mcResult } from "@/lib/multicall";
 import type {
   SpyTokenBalance,
   SpyLpPosition,
@@ -45,8 +47,6 @@ const INFINITY_POOLS = [
   },
 ] as const;
 
-import { mcResult } from "@/lib/multicall";
-
 export const spyTools = {
   spyOnWallet: tool({
     description:
@@ -73,18 +73,13 @@ export const spyTools = {
       const addr = walletAddress as `0x${string}`;
 
       try {
-        // ── Phase A: Discovery (4 parallel calls) ──
-        const [tokens, nativeBalance, pairsLengthRaw, activePoolsRaw] =
+        // ── Phase A: Discovery ──
+        const factories = getAllV2Factories();
+
+        const [tokens, nativeBalance, activePoolsRaw, ...pairsLengthResults] =
           await Promise.all([
             getAllTokens(),
             client.getBalance({ address: addr }).catch(() => 0n),
-            client
-              .readContract({
-                address: CONTRACTS.FACTORY,
-                abi: factoryAbi,
-                functionName: "allPairsLength",
-              })
-              .catch(() => 0n) as Promise<bigint>,
             client
               .readContract({
                 address: CONTRACTS.MASTER_CHEF,
@@ -92,21 +87,39 @@ export const spyTools = {
                 functionName: "getActivePools",
               })
               .catch(() => [] as bigint[]) as Promise<bigint[]>,
+            // Read pair count from each factory
+            ...factories.map((f) =>
+              client
+                .readContract({
+                  address: f.address,
+                  abi: factoryAbi,
+                  functionName: "allPairsLength",
+                })
+                .catch(() => 0n) as Promise<bigint>
+            ),
           ]);
 
-        const pairsLength = Number(pairsLengthRaw);
         const activePools = activePoolsRaw;
         const erc20Tokens = tokens.filter((t) => t.address != null);
 
-        // ── Multicall 1: Pair addresses + xToken addresses (single RPC) ──
+        // Build pair address multicall across all factories
+        const factoryCounts = factories.map((f, i) => ({
+          ...f,
+          count: Number(pairsLengthResults[i]),
+        }));
+        const totalPairsLength = factoryCounts.reduce((s, f) => s + f.count, 0);
+
+        // ── Multicall 1: Pair addresses from ALL factories + xToken addresses (single RPC) ──
         const mc1Contracts = [
-          // allPairs(i) for each pair
-          ...Array.from({ length: pairsLength }, (_, i) => ({
-            address: CONTRACTS.FACTORY,
-            abi: factoryAbi,
-            functionName: "allPairs" as const,
-            args: [BigInt(i)],
-          })),
+          // allPairs(i) for each factory
+          ...factoryCounts.flatMap((f) =>
+            Array.from({ length: f.count }, (_, i) => ({
+              address: f.address,
+              abi: factoryAbi,
+              functionName: "allPairs" as const,
+              args: [BigInt(i)],
+            }))
+          ),
           // xToken addresses for 3 InfinityPools
           ...INFINITY_POOLS.map((pool) => ({
             address: pool.address,
@@ -120,13 +133,13 @@ export const spyTools = {
           : [];
 
         const validPairs: `0x${string}`[] = [];
-        for (let i = 0; i < pairsLength; i++) {
+        for (let i = 0; i < totalPairsLength; i++) {
           const a = mcResult(mc1[i], ZERO_ADDR);
           if (a !== ZERO_ADDR) validPairs.push(a);
         }
 
         const xTokenAddresses = INFINITY_POOLS.map((_, i) =>
-          mcResult(mc1[pairsLength + i], ZERO_ADDR)
+          mcResult(mc1[totalPairsLength + i], ZERO_ADDR)
         );
 
         // ── Multicall 2: ALL balance + farm reads (single RPC) ──

@@ -15,6 +15,7 @@ export interface LpPosition {
   reserve0: bigint;
   reserve1: bigint;
   totalSupply: bigint;
+  protocolId: string;
 }
 
 export function useLpPositions() {
@@ -61,6 +62,7 @@ export function useLpPositions() {
           reserve0: pair.reserve0,
           reserve1: pair.reserve1,
           totalSupply: pair.totalSupply,
+          protocolId: pair.protocolId,
         };
       })
       .filter((p): p is LpPosition => p !== null);
