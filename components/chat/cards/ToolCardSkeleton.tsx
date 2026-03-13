@@ -15,6 +15,8 @@ export function ToolCardSkeleton({ toolName }: { toolName: string }) {
     getTransactionHistory: "Fetching transaction history...",
     getMembershipStatus: "Checking membership & discount status...",
     spyOnWallet: "Scanning wallet portfolio...",
+    getTokenPrice: "Fetching token price...",
+    listAllPairs: "Fetching all trading pairs...",
   };
 
   return (

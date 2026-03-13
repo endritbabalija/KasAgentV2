@@ -370,6 +370,27 @@ export interface MembershipStatusResult {
   error?: string;
 }
 
+// --- All Pairs Listing types ---
+
+export interface PairListItem {
+  pair: string;
+  pairAddress: string;
+  token0Symbol: string;
+  token1Symbol: string;
+  reserve0: string;
+  reserve1: string;
+  totalLiquidityKas: number;
+}
+
+export interface AllPairsResult {
+  pairs: PairListItem[];
+  totalPairsOnChain: number;
+  tokenCount: number;
+  minLiquidityKas: number;
+  fetchedAt: string;
+  error?: string;
+}
+
 // --- Token Price types ---
 
 export interface TokenPriceResult {

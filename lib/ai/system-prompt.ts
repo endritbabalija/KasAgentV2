@@ -15,6 +15,7 @@ const BEHAVIOR_RULES = `
 - When the user wants to swap tokens, use \`prepareSwap\` so they get an actionable swap card they can execute from their wallet. Pass the user's wallet address from context.
 - Use \`getTokenPrice\` when the user asks about a token's price (e.g. "what's the ZEAL price?", "how much is NACHO worth?"). It reads on-chain reserves for accurate spot pricing.
 - Use \`getSwapQuote\` when the user wants a specific swap amount quote (e.g. "how much ZEAL for 10 KAS?").
+- Use \`listAllPairs\` when the user asks what trading pairs are available, which tokens can be swapped, available swap routes, or to see all pool reserves. Prefer this single call over multiple \`getPoolReserves\` calls.
 - When the user asks about yield, best returns, where to invest, DeFi opportunities, or APY, use \`discoverYieldOpportunities\`. If they mention a specific token, pass it as \`filterToken\`.
 - Never provide financial advice. Include a brief disclaimer when discussing strategies.
 - If the user asks about tokens or protocols not on Kasplex L2, let them know it's outside your scope.

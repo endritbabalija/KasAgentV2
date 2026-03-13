@@ -3,6 +3,7 @@ import { ToolErrorCard } from "./cards/ToolErrorCard";
 import { SwapQuoteCard } from "./cards/SwapQuoteCard";
 import { SwapExecutionCard } from "./cards/SwapExecutionCard";
 import { PoolReservesCard } from "./cards/PoolReservesCard";
+import { AllPairsCard } from "./cards/AllPairsCard";
 import { FarmsTableCard } from "./cards/FarmsTableCard";
 import { InfinityPoolRatesCard } from "./cards/InfinityPoolRatesCard";
 import { YieldOpportunitiesCard } from "./cards/YieldOpportunitiesCard";
@@ -33,6 +34,7 @@ import type {
   MembershipStatusResult,
   SpyPortfolioResult,
   TokenPriceResult,
+  AllPairsResult,
 } from "@/lib/ai/tool-types";
 
 import { useExecutionState } from "./ExecutionStateContext";
@@ -80,6 +82,8 @@ export function ToolPartRenderer({ part }: { part: ToolPart }) {
       return <SwapExecutionCard data={output as unknown as PrepareSwapResult} toolCallId={toolCallId} executionState={execution} />;
     case "getPoolReserves":
       return <PoolReservesCard data={output as unknown as PoolReservesResult} />;
+    case "listAllPairs":
+      return <AllPairsCard data={output as unknown as AllPairsResult} />;
     case "getActiveFarms":
       return <FarmsTableCard data={output as unknown as ActiveFarmsResult} />;
     case "getInfinityPoolRates":

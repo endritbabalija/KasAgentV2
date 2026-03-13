@@ -1,5 +1,6 @@
 import { swapTools } from "./swap";
 import { liquidityTools } from "./liquidity";
+import { pairTools } from "./pairs";
 import { farmTools } from "./farms";
 import { stakingTools } from "./staking";
 import { yieldTools } from "./yield";
@@ -11,6 +12,7 @@ import { oracleTools } from "./oracle";
 export const aiTools = {
   ...swapTools,
   ...liquidityTools,
+  ...pairTools,
   ...farmTools,
   ...stakingTools,
   ...yieldTools,

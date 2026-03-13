@@ -49,6 +49,19 @@ export function getQuickActions(
           variant: "primary",
         },
       ];
+    case "listAllPairs":
+      return [
+        {
+          label: "Best yield",
+          message: "Which pool has the best yield?",
+          variant: "primary",
+        },
+        {
+          label: "Add liquidity",
+          message: "I want to add liquidity",
+          variant: "secondary",
+        },
+      ];
     case "getActiveFarms":
       return [
         {
