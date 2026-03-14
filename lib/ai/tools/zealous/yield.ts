@@ -149,17 +149,23 @@ function derivePrices(pairs: PairData[], tokens: Token[]) {
   const wkasAddr = CONTRACTS.WKAS.toLowerCase();
   const tokenPrices: Record<string, number> = { [wkasAddr]: 1 };
 
-  // Build address-to-symbol map from discovered tokens
+  // Build address-to-symbol and address-to-decimals maps from discovered tokens
   const addrToSym: Record<string, string> = {};
+  const addrToDecimals: Record<string, number> = {};
   for (const t of tokens) {
-    if (t.address) addrToSym[t.address.toLowerCase()] = t.symbol;
+    if (t.address) {
+      addrToSym[t.address.toLowerCase()] = t.symbol;
+      addrToDecimals[t.address.toLowerCase()] = t.decimals;
+    }
   }
 
   // First pass: pairs with WKAS on one side
   for (const pair of pairs) {
     if (pair.reserve0 === 0n || pair.reserve1 === 0n) continue;
-    const r0 = Number(formatUnits(pair.reserve0, 18));
-    const r1 = Number(formatUnits(pair.reserve1, 18));
+    const d0 = addrToDecimals[pair.token0] ?? 18;
+    const d1 = addrToDecimals[pair.token1] ?? 18;
+    const r0 = Number(formatUnits(pair.reserve0, d0));
+    const r1 = Number(formatUnits(pair.reserve1, d1));
     if (pair.token0 === wkasAddr && !tokenPrices[pair.token1]) {
       tokenPrices[pair.token1] = r0 / r1;
     } else if (pair.token1 === wkasAddr && !tokenPrices[pair.token0]) {
@@ -170,8 +176,10 @@ function derivePrices(pairs: PairData[], tokens: Token[]) {
   // Second pass: pairs where one side has a known price
   for (const pair of pairs) {
     if (pair.reserve0 === 0n || pair.reserve1 === 0n) continue;
-    const r0 = Number(formatUnits(pair.reserve0, 18));
-    const r1 = Number(formatUnits(pair.reserve1, 18));
+    const d0 = addrToDecimals[pair.token0] ?? 18;
+    const d1 = addrToDecimals[pair.token1] ?? 18;
+    const r0 = Number(formatUnits(pair.reserve0, d0));
+    const r1 = Number(formatUnits(pair.reserve1, d1));
     if (tokenPrices[pair.token0] && !tokenPrices[pair.token1]) {
       tokenPrices[pair.token1] = (tokenPrices[pair.token0] * r0) / r1;
     } else if (tokenPrices[pair.token1] && !tokenPrices[pair.token0]) {
@@ -185,7 +193,7 @@ function derivePrices(pairs: PairData[], tokens: Token[]) {
     if (sym) tokenPricesInKas[sym] = price;
   }
 
-  return { tokenPrices, tokenPricesInKas, addrToSymbol: addrToSym };
+  return { tokenPrices, tokenPricesInKas, addrToSymbol: addrToSym, addrToDecimals };
 }
 
 // ===== Build opportunities array =====
@@ -195,6 +203,7 @@ function buildOpportunities(
   infinityData: InfinityData,
   tokenPrices: Record<string, number>,
   addrToSym: Record<string, string>,
+  addrToDecimals: Record<string, number>,
   tokens: Token[],
 ): YieldOpportunity[] {
   const opportunities: YieldOpportunity[] = [];
@@ -220,8 +229,10 @@ function buildOpportunities(
     const price0 = tokenPrices[pairData.token0] ?? 0;
     const price1 = tokenPrices[pairData.token1] ?? 0;
 
-    const r0 = Number(formatUnits(pairData.reserve0, 18));
-    const r1 = Number(formatUnits(pairData.reserve1, 18));
+    const d0 = addrToDecimals[pairData.token0] ?? 18;
+    const d1 = addrToDecimals[pairData.token1] ?? 18;
+    const r0 = Number(formatUnits(pairData.reserve0, d0));
+    const r1 = Number(formatUnits(pairData.reserve1, d1));
     const lpTotalSupply = Number(formatUnits(pairData.totalSupply, 18));
     const deposited = Number(formatUnits(totalDeposited, 18));
 
@@ -373,8 +384,8 @@ export const zealousYieldTools = {
     execute: async ({ filterToken }) => {
       try {
         const [pairs, farmData, infinityData, tokens] = await fetchOnChainData();
-        const { tokenPrices, tokenPricesInKas, addrToSymbol: addrToSym } = derivePrices(pairs, tokens);
-        const opportunities = buildOpportunities(pairs, farmData, infinityData, tokenPrices, addrToSym, tokens);
+        const { tokenPrices, tokenPricesInKas, addrToSymbol: addrToSym, addrToDecimals } = derivePrices(pairs, tokens);
+        const opportunities = buildOpportunities(pairs, farmData, infinityData, tokenPrices, addrToSym, addrToDecimals, tokens);
         const filtered = rankAndFilter(opportunities, filterToken);
 
         return {

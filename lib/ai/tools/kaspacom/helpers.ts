@@ -1,39 +1,41 @@
-import { CONTRACTS } from "@/config/contracts";
-import { routerAbi } from "@/config/abis";
+import { kaspacomRouterAbi } from "@/config/abis";
+import { PROTOCOLS, SHARED } from "@/config/protocols";
 import { client, calculatePriceImpactForFactory } from "../shared/helpers";
+
+const ROUTER = PROTOCOLS.kaspacom.contracts.router as `0x${string}`;
+const FACTORY = PROTOCOLS.kaspacom.contracts.factory as `0x${string}`;
+const WKAS = SHARED.WKAS;
 
 export async function findBestPath(
   addressIn: `0x${string}`,
   addressOut: `0x${string}`,
-  rawAmountIn: bigint,
-  isDiscountEligible = false
+  rawAmountIn: bigint
 ): Promise<{ path: `0x${string}`[]; amounts: bigint[] }> {
   // Try direct path first
   try {
     const amounts = (await client.readContract({
-      address: CONTRACTS.ROUTER,
-      abi: routerAbi,
+      address: ROUTER,
+      abi: kaspacomRouterAbi,
       functionName: "getAmountsOut",
-      args: [rawAmountIn, [addressIn, addressOut], isDiscountEligible],
+      args: [rawAmountIn, [addressIn, addressOut]],
     })) as bigint[];
     return { path: [addressIn, addressOut], amounts };
   } catch {
     // Direct path failed — try routing through WKAS
   }
 
-  const wkas = CONTRACTS.WKAS;
   // Skip WKAS hop if either token IS WKAS
-  if (addressIn.toLowerCase() === wkas.toLowerCase() || addressOut.toLowerCase() === wkas.toLowerCase()) {
+  if (addressIn.toLowerCase() === WKAS.toLowerCase() || addressOut.toLowerCase() === WKAS.toLowerCase()) {
     throw new Error("No liquidity path found for this pair");
   }
 
   const amounts = (await client.readContract({
-    address: CONTRACTS.ROUTER,
-    abi: routerAbi,
+    address: ROUTER,
+    abi: kaspacomRouterAbi,
     functionName: "getAmountsOut",
-    args: [rawAmountIn, [addressIn, wkas, addressOut], isDiscountEligible],
+    args: [rawAmountIn, [addressIn, WKAS, addressOut]],
   })) as bigint[];
-  return { path: [addressIn, wkas, addressOut], amounts };
+  return { path: [addressIn, WKAS, addressOut], amounts };
 }
 
 export async function calculatePriceImpact(
@@ -41,5 +43,5 @@ export async function calculatePriceImpact(
   rawAmountIn: bigint,
   rawAmountOut: bigint
 ): Promise<string> {
-  return calculatePriceImpactForFactory(CONTRACTS.FACTORY, path, rawAmountIn, rawAmountOut);
+  return calculatePriceImpactForFactory(FACTORY, path, rawAmountIn, rawAmountOut);
 }

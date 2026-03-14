@@ -1,8 +1,7 @@
 import { formatUnits, parseUnits } from "viem";
 import { z } from "zod";
 import { tool } from "ai";
-import { CONTRACTS } from "@/config/contracts";
-import { checkDiscountEligibility } from "@/lib/discount";
+import { PROTOCOLS } from "@/config/protocols";
 import type { RiskFlag, ContractInfo } from "../../tool-types";
 import {
   resolveTokenAddress,
@@ -14,10 +13,13 @@ import {
 } from "../shared/helpers";
 import { findBestPath, calculatePriceImpact } from "./helpers";
 
-export const zealousSwapTools = {
-  zealous_getSwapQuote: tool({
+const ROUTER = PROTOCOLS.kaspacom.contracts.router as `0x${string}`;
+const FACTORY = PROTOCOLS.kaspacom.contracts.factory as `0x${string}`;
+
+export const kaspacomSwapTools = {
+  kaspacom_getSwapQuote: tool({
     description:
-      "Get a swap quote for exchanging one token for another on ZealousSwap. Returns the expected output amount. Automatically routes through WKAS if no direct pair exists.",
+      "Get a swap quote for exchanging one token for another on KaspaCom. Returns the expected output amount. Automatically routes through WKAS if no direct pair exists. KaspaCom has a fixed 1% swap fee.",
     inputSchema: z.object({
       tokenIn: z
         .string()
@@ -28,12 +30,8 @@ export const zealousSwapTools = {
       amountIn: z
         .string()
         .describe("Amount of input token in human-readable form (e.g. '10')"),
-      walletAddress: z
-        .string()
-        .optional()
-        .describe("User wallet address for discount-aware quotes"),
     }),
-    execute: async ({ tokenIn, tokenOut, amountIn, walletAddress }) => {
+    execute: async ({ tokenIn, tokenOut, amountIn }) => {
       const addressIn = await resolveTokenAddress(tokenIn);
       const addressOut = await resolveTokenAddress(tokenOut);
       if (!addressIn || !addressOut) {
@@ -50,11 +48,7 @@ export const zealousSwapTools = {
       const rawAmount = parseUnits(amountIn, decimalsIn);
 
       try {
-        const discount = walletAddress
-          ? await checkDiscountEligibility(walletAddress)
-          : { isEligible: false, source: "None" };
-
-        const { path, amounts } = await findBestPath(addressIn, addressOut, rawAmount, discount.isEligible);
+        const { path, amounts } = await findBestPath(addressIn, addressOut, rawAmount);
         const amountOut = amounts[amounts.length - 1];
         const isMultiHop = path.length > 2;
 
@@ -65,7 +59,7 @@ export const zealousSwapTools = {
           amountOut: formatUnits(amountOut, decimalsOut),
           path,
           ...(isMultiHop ? { route: `${tokenIn} → WKAS → ${tokenOut}` } : {}),
-          protocol: "zealous" as const,
+          protocol: "kaspacom" as const,
         };
       } catch (e) {
         return {
@@ -75,9 +69,9 @@ export const zealousSwapTools = {
     },
   }),
 
-  zealous_prepareSwap: tool({
+  kaspacom_prepareSwap: tool({
     description:
-      "Prepare a token swap transaction for the user to execute in their wallet. Returns all transaction parameters needed for on-chain execution. Automatically routes through WKAS if no direct pair exists.",
+      "Prepare a token swap transaction on KaspaCom for the user to execute in their wallet. Returns all transaction parameters needed for on-chain execution. KaspaCom uses standard Uniswap V2 router with a fixed 1% swap fee.",
     inputSchema: z.object({
       tokenIn: z
         .string()
@@ -120,43 +114,38 @@ export const zealousSwapTools = {
         isNativeIn ? "KAS_TO_TOKEN" : isNativeOut ? "TOKEN_TO_KAS" : "TOKEN_TO_TOKEN";
 
       try {
-        // Check discount eligibility for connected wallet
-        const discount = walletAddress
-          ? await checkDiscountEligibility(walletAddress)
-          : { isEligible: false, source: "None" };
-
-        const { path, amounts } = await findBestPath(addressIn, addressOut, rawAmountIn, discount.isEligible);
+        const { path, amounts } = await findBestPath(addressIn, addressOut, rawAmountIn);
         const isMultiHop = path.length > 2;
 
         const rawAmountOut = amounts[amounts.length - 1];
         const rawAmountOutMin = calculateMinAmount(rawAmountOut, slippage);
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
 
-        // Check allowance for ERC-20 inputs
+        // Check allowance for ERC-20 inputs (approval target is router directly)
         let needsApproval = false;
         let currentAllowance = "0";
         if (!isNativeIn && walletAddress && addressIn) {
           ({ needsApproval, currentAllowance } = await checkAllowance(
             addressIn,
             walletAddress as `0x${string}`,
-            CONTRACTS.ROUTER,
+            ROUTER,
             rawAmountIn
           ));
         }
 
-        // Price impact (calculated per-hop along the full path)
+        // Price impact
         const priceImpact = await calculatePriceImpact(
           path,
           rawAmountIn,
           rawAmountOut
         );
 
-        // Gas estimation (multi-hop uses more gas)
+        // Gas estimation
         const gasEstimate = await estimateGasCost(isMultiHop ? 250000n : 150000n, isMultiHop ? "0.035" : "0.0214");
 
-        // DEX fee — 0.3% standard, 0.2% for discount-eligible users
+        // DEX fee — 1% fixed per hop, no discounts
         const parsedAmountIn = parseFloat(amountIn);
-        const feePerHop = discount.isEligible ? 0.002 : 0.003;
+        const feePerHop = 0.01;
         const hops = path.length - 1;
         const totalFeePct = (1 - Math.pow(1 - feePerHop, hops)) * 100;
         const feeAmount = isNaN(parsedAmountIn) ? 0 : parsedAmountIn * (1 - Math.pow(1 - feePerHop, hops));
@@ -175,21 +164,21 @@ export const zealousSwapTools = {
           riskFlags.push({ type: "multi_hop", label: `Multi-hop route via WKAS (${totalFeePct.toFixed(2)}% total fee)`, severity: "low" });
         }
 
-        // Check pool liquidity for each hop (KAS-denominated) — batched
-        await checkPoolLiquidity(CONTRACTS.FACTORY, path, riskFlags);
+        // Check pool liquidity for each hop — batched
+        await checkPoolLiquidity(FACTORY, path, riskFlags);
 
         if (slippage > 1) {
           riskFlags.push({ type: "high_slippage", label: `High slippage tolerance (${slippage}%)`, severity: "medium" });
         }
 
-        // Contract interaction info
+        // Contract interaction info — standard V2 function names
         const contractInfoMap: Record<string, { functionName: string; description: string }> = {
-          KAS_TO_TOKEN: { functionName: "swapExactKASForTokens", description: "Swap exact KAS for tokens via ZealousSwap Router" },
-          TOKEN_TO_KAS: { functionName: "swapExactTokensForKAS", description: "Swap exact tokens for KAS via ZealousSwap Router" },
-          TOKEN_TO_TOKEN: { functionName: "swapExactTokensForTokens", description: "Swap tokens for tokens via ZealousSwap Router" },
+          KAS_TO_TOKEN: { functionName: "swapExactETHForTokens", description: "Swap exact KAS for tokens via KaspaCom Router" },
+          TOKEN_TO_KAS: { functionName: "swapExactTokensForETH", description: "Swap exact tokens for KAS via KaspaCom Router" },
+          TOKEN_TO_TOKEN: { functionName: "swapExactTokensForTokens", description: "Swap tokens for tokens via KaspaCom Router" },
         };
         const contractInfo: ContractInfo = {
-          address: CONTRACTS.ROUTER,
+          address: ROUTER,
           ...contractInfoMap[swapType],
         };
 
@@ -204,9 +193,9 @@ export const zealousSwapTools = {
           dexFee: totalFeePct.toFixed(2),
           gasEstimate,
           dexFeeAmount,
-          feeRate: discount.isEligible ? "0.20%" : "0.30%",
-          discountApplied: discount.isEligible,
-          discountSource: discount.source,
+          feeRate: "1.00%",
+          discountApplied: false,
+          discountSource: "None",
           riskFlags,
           contractInfo,
           swapType,
@@ -214,7 +203,7 @@ export const zealousSwapTools = {
           currentAllowance,
           ...(isMultiHop ? { route: `${tokenIn} → WKAS → ${tokenOut}` } : {}),
           tx: {
-            router: CONTRACTS.ROUTER,
+            router: ROUTER,
             tokenInAddress: addressIn,
             tokenOutAddress: addressOut,
             rawAmountIn: rawAmountIn.toString(),

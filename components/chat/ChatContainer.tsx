@@ -71,7 +71,12 @@ export function ChatContainer({
   onMessagesChange,
   saveError,
 }: ChatContainerProps) {
-  const { getTokenSymbol } = useTokenRegistry();
+  const { getTokenSymbol, tokenMap } = useTokenRegistry();
+  const getTokenDecimals = useCallback(
+    (address: string): number =>
+      tokenMap.get(address.toLowerCase())?.decimals ?? 18,
+    [tokenMap]
+  );
 
   const [bodyStore] = useState(createBodyStore);
 
@@ -88,10 +93,12 @@ export function ChatContainer({
   const onSavedRef = useRef(onConversationSaved);
   const conversationIdRef = useRef(activeConversationId);
   const portfolioRef = useRef(portfolio.address);
+  const portfolioRefetchRef = useRef(portfolio.refetch);
   useEffect(() => {
     onSavedRef.current = onConversationSaved;
     conversationIdRef.current = activeConversationId;
     portfolioRef.current = portfolio.address;
+    portfolioRefetchRef.current = portfolio.refetch;
   });
 
   // Execution state persistence — backed by Supabase execution_states table.
@@ -103,6 +110,11 @@ export function ChatContainer({
     (toolCallId: string, state: string, txHash?: string) => {
       const record: ExecutionRecord = { state, ...(txHash ? { txHash } : {}) };
       setExecutionStates((prev) => ({ ...prev, [toolCallId]: record }));
+
+      // Refetch portfolio data so balances/positions update immediately after tx
+      if (state === "success") {
+        portfolioRefetchRef.current();
+      }
 
       // Persist to DB (fire-and-forget — the local state is already updated)
       const convoId = conversationIdRef.current;
@@ -209,7 +221,8 @@ export function ChatContainer({
             portfolio.farmPositions,
             portfolio.farmGlobals,
             portfolio.stakingPositions,
-            getTokenSymbol
+            getTokenSymbol,
+            getTokenDecimals
           )
         : null,
       serializeInfinityPools(pools)

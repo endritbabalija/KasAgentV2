@@ -4,6 +4,7 @@ import { TokenBadge, formatAmount } from "./shared/ExecutionCardParts";
 const protocolLabels: Record<string, { label: string; className: string }> = {
   kroko: { label: "KrokoSwap", className: "bg-indigo-900/50 text-indigo-400" },
   zealous: { label: "ZealousSwap", className: "bg-blue-900/50 text-blue-400" },
+  kaspacom: { label: "KaspaCom", className: "bg-orange-900/50 text-orange-400" },
 };
 
 export function SwapQuoteCard({ data }: { data: SwapQuoteResult }) {

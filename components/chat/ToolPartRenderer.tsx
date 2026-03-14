@@ -75,6 +75,10 @@ const TOOL_CARD_REGISTRY: Record<string, CardRenderer> = {
   kroko_getSwapQuote: (o) => <SwapQuoteCard data={o as unknown as SwapQuoteResult} />,
   kroko_prepareSwap: (o, id, ex) => <KrokoSwapExecutionCard data={o as unknown as KrokoPrepareSwapResult} toolCallId={id} executionState={ex} />,
 
+  // KaspaCom tools
+  kaspacom_getSwapQuote: (o) => <SwapQuoteCard data={o as unknown as SwapQuoteResult} />,
+  kaspacom_prepareSwap: (o, id, ex) => <SwapExecutionCard data={o as unknown as PrepareSwapResult} toolCallId={id} executionState={ex} />,
+
   // Cross-protocol tools
   compareSwapQuotes: (o) => <SwapComparisonCard data={o as unknown as SwapComparisonResult} />,
 

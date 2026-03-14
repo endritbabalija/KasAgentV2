@@ -45,7 +45,9 @@ export function PortfolioSidebar({
   conversationError,
   onClearError,
 }: PortfolioSidebarProps) {
-  const { getTokenSymbol } = useTokenRegistry();
+  const { getTokenSymbol, tokenMap } = useTokenRegistry();
+  const getTokenDecimals = (address: string): number =>
+    tokenMap.get(address.toLowerCase())?.decimals ?? 18;
 
   const handleSelectConversation = (id: string) => {
     onSelectConversation(id);
@@ -241,11 +243,11 @@ export function PortfolioSidebar({
                         <div className="flex gap-3 text-xs text-zinc-500">
                           <span>
                             {getTokenSymbol(lp.token0)}:{" "}
-                            {formatTokenAmount(lp.token0Amount, 18)}
+                            {formatTokenAmount(lp.token0Amount, getTokenDecimals(lp.token0))}
                           </span>
                           <span>
                             {getTokenSymbol(lp.token1)}:{" "}
-                            {formatTokenAmount(lp.token1Amount, 18)}
+                            {formatTokenAmount(lp.token1Amount, getTokenDecimals(lp.token1))}
                           </span>
                         </div>
                       </div>

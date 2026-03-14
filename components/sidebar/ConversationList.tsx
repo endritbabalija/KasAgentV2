@@ -102,10 +102,13 @@ export function ConversationList({
               </h4>
               <div className="space-y-0.5">
                 {group.items.map((c) => (
-                  <button
+                  <div
                     key={c.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onSelect(c.id)}
-                    className={`group w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-left transition-colors ${
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(c.id); }}
+                    className={`group w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-left transition-colors cursor-pointer ${
                       activeConversationId === c.id
                         ? "bg-zinc-700/50"
                         : "hover:bg-zinc-800"
@@ -154,7 +157,7 @@ export function ConversationList({
                         <Trash2 className="w-3.5 h-3.5" />
                       </span>
                     )}
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>

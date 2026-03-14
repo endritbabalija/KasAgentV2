@@ -12,3 +12,5 @@ export { discountManagerAbi } from "./discountManager";
 export { membershipAbi } from "./membership";
 export { nftStakingAbi } from "./nftStaking";
 export { permit2Abi } from "./permit2";
+export { kaspacomRouterAbi } from "./kaspacomRouter";
+export { v2SwapAbi } from "./v2SwapAbi";

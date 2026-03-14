@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAccount, useConfig, useWriteContract } from "wagmi";
 import { waitForTransactionReceipt } from "@wagmi/core";
-import { routerAbi, erc20Abi } from "@/config/abis";
+import { v2SwapAbi, erc20Abi } from "@/config/abis";
 import type { PrepareSwapResult } from "@/lib/ai/tool-types";
 import {
   TokenBadge,
@@ -49,20 +49,23 @@ export function SwapExecutionCard({ data, toolCallId, executionState }: { data: 
 
       setState("swapping");
 
+      // Dispatch using contractInfo.functionName — supports both ZealousSwap (KAS)
+      // and KaspaCom (ETH) V2 router variants via the combined v2SwapAbi
+      const fnName = data.contractInfo.functionName;
       let hash: `0x${string}`;
       if (swapType === "KAS_TO_TOKEN") {
         hash = await writeSwapAsync({
           address: tx.router as `0x${string}`,
-          abi: routerAbi,
-          functionName: "swapExactKASForTokens",
+          abi: v2SwapAbi,
+          functionName: fnName as "swapExactKASForTokens" | "swapExactETHForTokens",
           args: [BigInt(tx.rawAmountOutMin), path, address!, deadline],
           value: BigInt(tx.value),
         });
       } else if (swapType === "TOKEN_TO_KAS") {
         hash = await writeSwapAsync({
           address: tx.router as `0x${string}`,
-          abi: routerAbi,
-          functionName: "swapExactTokensForKAS",
+          abi: v2SwapAbi,
+          functionName: fnName as "swapExactTokensForKAS" | "swapExactTokensForETH",
           args: [
             BigInt(tx.rawAmountIn),
             BigInt(tx.rawAmountOutMin),
@@ -74,7 +77,7 @@ export function SwapExecutionCard({ data, toolCallId, executionState }: { data: 
       } else {
         hash = await writeSwapAsync({
           address: tx.router as `0x${string}`,
-          abi: routerAbi,
+          abi: v2SwapAbi,
           functionName: "swapExactTokensForTokens",
           args: [
             BigInt(tx.rawAmountIn),

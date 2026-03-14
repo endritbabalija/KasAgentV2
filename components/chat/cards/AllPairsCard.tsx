@@ -5,6 +5,12 @@ import type { AllPairsResult, PairListItem } from "@/lib/ai/tool-types";
 
 const PAGE_SIZE = 10;
 
+const PROTOCOL_BADGES: Record<string, { label: string; className: string }> = {
+  zealous: { label: "Zealous", className: "bg-blue-900/50 text-blue-400" },
+  kroko: { label: "Kroko", className: "bg-indigo-900/50 text-indigo-400" },
+  kaspacom: { label: "KaspaCom", className: "bg-orange-900/50 text-orange-400" },
+};
+
 function formatLiquidity(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
@@ -12,13 +18,21 @@ function formatLiquidity(n: number): string {
   return n.toFixed(2);
 }
 
-function PairRow({ pair, maxLiquidity }: { pair: PairListItem; maxLiquidity: number }) {
+function PairRow({ pair, maxLiquidity, showProtocol }: { pair: PairListItem; maxLiquidity: number; showProtocol: boolean }) {
   const barWidth = maxLiquidity > 0 ? (pair.totalLiquidityKas / maxLiquidity) * 100 : 0;
+  const badge = pair.protocolId ? PROTOCOL_BADGES[pair.protocolId] : undefined;
 
   return (
     <tr className="border-b border-zinc-700/30 last:border-0">
       <td className="py-2 pr-4">
-        <span className="text-sm text-zinc-200 font-medium">{pair.pair}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm text-zinc-200 font-medium">{pair.pair}</span>
+          {showProtocol && badge && (
+            <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${badge.className}`}>
+              {badge.label}
+            </span>
+          )}
+        </div>
       </td>
       <td className="py-2 w-full">
         <div className="flex items-center gap-2">
@@ -46,11 +60,23 @@ export function AllPairsCard({ data }: { data: AllPairsResult }) {
   const maxLiquidity = data.pairs.length > 0 ? data.pairs[0].totalLiquidityKas : 0;
   const filtered = data.totalPairsOnChain - data.pairs.length;
 
+  // Detect if showing multiple protocols (show badges when mixed)
+  const protocols = new Set(data.pairs.map((p) => p.protocolId).filter(Boolean));
+  const showProtocol = protocols.size > 1;
+  const singleProtocol = protocols.size === 1 ? PROTOCOL_BADGES[Array.from(protocols)[0]] : undefined;
+
   return (
     <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-xs text-zinc-500 uppercase tracking-wide">
-          Trading Pairs
+        <div className="flex items-center gap-2">
+          <div className="text-xs text-zinc-500 uppercase tracking-wide">
+            Trading Pairs
+          </div>
+          {singleProtocol && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${singleProtocol.className}`}>
+              {singleProtocol.label}
+            </span>
+          )}
         </div>
         <div className="text-xs text-zinc-600">
           {data.pairs.length} active{filtered > 0 ? ` (${filtered} dust filtered)` : ""}
@@ -68,7 +94,7 @@ export function AllPairsCard({ data }: { data: AllPairsResult }) {
             </thead>
             <tbody>
               {pageItems.map((pair) => (
-                <PairRow key={pair.pairAddress} pair={pair} maxLiquidity={maxLiquidity} />
+                <PairRow key={pair.pairAddress} pair={pair} maxLiquidity={maxLiquidity} showProtocol={showProtocol} />
               ))}
             </tbody>
           </table>

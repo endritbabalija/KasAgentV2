@@ -46,9 +46,11 @@ export function serializePortfolio(
   farmPositions: FarmPosition[],
   farmGlobals: FarmGlobals,
   stakingPositions: StakingPosition[],
-  symbolResolver?: (address: string) => string
+  symbolResolver?: (address: string) => string,
+  decimalsResolver?: (address: string) => number
 ): SerializedPortfolio {
   const resolve = symbolResolver ?? ((addr: string) => addr.slice(0, 10));
+  const resolveDecimals = decimalsResolver ?? (() => 18);
 
   return {
     address,
@@ -63,8 +65,8 @@ export function serializePortfolio(
       .map((lp) => ({
         pair: `${resolve(lp.token0)}/${resolve(lp.token1)}`,
         lpBalance: fmt(lp.lpBalance),
-        token0Amount: fmt(lp.token0Amount),
-        token1Amount: fmt(lp.token1Amount),
+        token0Amount: fmt(lp.token0Amount, resolveDecimals(lp.token0)),
+        token1Amount: fmt(lp.token1Amount, resolveDecimals(lp.token1)),
         ...("protocolId" in lp && lp.protocolId ? { protocol: lp.protocolId as string } : {}),
       })),
     farmPositions: farmPositions

@@ -83,6 +83,7 @@ export interface PrepareSwapResult {
   riskFlags: RiskFlag[];
   contractInfo: ContractInfo;
   swapType: "KAS_TO_TOKEN" | "TOKEN_TO_KAS" | "TOKEN_TO_TOKEN";
+  route?: string;
   needsApproval: boolean;
   currentAllowance: string;
   tx: PrepareSwapTx;
@@ -382,6 +383,7 @@ export interface PairListItem {
   reserve0: string;
   reserve1: string;
   totalLiquidityKas: number;
+  protocolId: string;
 }
 
 export interface AllPairsResult {

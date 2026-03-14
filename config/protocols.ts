@@ -1,6 +1,6 @@
 import { CONTRACTS } from "./contracts";
 
-export type ProtocolId = "zealous" | "kroko";
+export type ProtocolId = "zealous" | "kroko" | "kaspacom";
 
 export type ProtocolFeature = "swap" | "liquidity" | "farms" | "staking" | "membership";
 
@@ -57,6 +57,21 @@ export const PROTOCOLS: Record<ProtocolId, ProtocolConfig> = {
     factoryType: "uniswap-v2",
     apiBaseUrl: "https://krokoswap.io/swap-api",
     description: `Dual-AMM DEX with V2 constant-product pools and V3 concentrated-liquidity pools. Universal Router handles optimal routing across both pool types. Permit2 approval flow. REST API for swap quoting and calldata generation. No farms or staking currently.`,
+  },
+  kaspacom: {
+    id: "kaspacom",
+    name: "KaspaCom",
+    shortName: "KaspaCom",
+    features: ["swap"],
+    contracts: {
+      router: "0x3a1f0bD164fe9D8fa18Da5abAB352dC634CA5F10" as `0x${string}`,
+      factory: "0xa9CBa43A407c9Eb30933EA21f7b9D74A128D613c" as `0x${string}`,
+      proxy: "0x4c5BEaAE83577E3a117ce2F477fC42a1EA39A8a3" as `0x${string}`,
+      wkas: "0x2c2Ae87Ba178F48637acAe54B87c3924F544a83e" as `0x${string}`,
+    },
+    factoryAddress: "0xa9CBa43A407c9Eb30933EA21f7b9D74A128D613c" as `0x${string}`,
+    factoryType: "uniswap-v2",
+    description: `AMM DEX (Uniswap V2 fork) with a fixed 1% swap fee hardcoded in pair math. Standard V2 Router with swapExactETHForTokens/swapExactTokensForETH naming. No farms, staking, or fee discounts. Swap only.`,
   },
 };
 

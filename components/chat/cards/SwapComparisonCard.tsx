@@ -8,10 +8,12 @@ function ProtocolBadge({ protocol }: { protocol: string }) {
   const colors: Record<string, string> = {
     zealous: "bg-blue-900/50 text-blue-400",
     kroko: "bg-indigo-900/50 text-indigo-400",
+    kaspacom: "bg-orange-900/50 text-orange-400",
   };
   const names: Record<string, string> = {
     zealous: "ZealousSwap",
     kroko: "KrokoSwap",
+    kaspacom: "KaspaCom",
   };
   return (
     <span

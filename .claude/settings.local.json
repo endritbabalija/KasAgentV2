@@ -34,7 +34,9 @@
       "Bash(netstat -ano | grep -i \"LISTENING\" | grep -E \":\\(3000|3001|3002|3003|3004|3005|4000|5000|8080|8081\\)\")",
       "Bash(find C:\\\\Users\\\\endri\\\\documents\\\\KasAgentV2 -maxdepth 1 -type f \\\\\\( -name \"tailwind.config.*\" -o -name \".env*\" \\\\\\) 2>/dev/null | head -20)",
       "Bash(cd \"C:\\\\Users\\\\endri\\\\documents\\\\KasAgentV2\" && rm lib/ai/tools/swap.ts lib/ai/tools/liquidity.ts lib/ai/tools/pairs.ts lib/ai/tools/farms.ts lib/ai/tools/staking.ts lib/ai/tools/yield.ts lib/ai/tools/membership.ts)",
-      "WebFetch(domain:dex.kasplex.org)"
+      "WebFetch(domain:dex.kasplex.org)",
+      "mcp__plugin_supabase_supabase__list_migrations",
+      "mcp__plugin_supabase_supabase__search_docs"
     ]
   }
 }

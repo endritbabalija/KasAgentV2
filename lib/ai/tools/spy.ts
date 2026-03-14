@@ -325,14 +325,22 @@ export const spyTools = {
           const token1Amount =
             totalSupply > 0n ? (reserves[1] * balance) / totalSupply : 0n;
 
+          // Look up actual decimals from discovered tokens (fallback to 18)
+          const t0Decimals = erc20Tokens.find(
+            (t) => t.address?.toLowerCase() === token0.toLowerCase()
+          )?.decimals ?? 18;
+          const t1Decimals = erc20Tokens.find(
+            (t) => t.address?.toLowerCase() === token1.toLowerCase()
+          )?.decimals ?? 18;
+
           lpPositions.push({
             pairAddress: pairAddr,
             pair: `${t0Sym}/${t1Sym}`,
             lpBalance: formatEther(balance),
             token0Symbol: t0Sym,
-            token0Amount: formatEther(token0Amount),
+            token0Amount: formatUnits(token0Amount, t0Decimals),
             token1Symbol: t1Sym,
-            token1Amount: formatEther(token1Amount),
+            token1Amount: formatUnits(token1Amount, t1Decimals),
           });
         }
 
