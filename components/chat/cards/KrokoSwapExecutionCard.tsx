@@ -38,7 +38,7 @@ export function KrokoSwapExecutionCard({
   toolCallId?: string;
   executionState?: ExecutionRecord;
 }) {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const config = useConfig();
   const { markExecuted } = useExecutionState();
   const [state, setState] = useState<KrokoSwapState>(
