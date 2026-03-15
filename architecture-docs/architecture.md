@@ -1,6 +1,6 @@
 # KasAgent Architecture
 
-> Last updated: 2026-03-14
+> Last updated: 2026-03-15
 > Codebase: Next.js 16 + React 19 + wagmi 2 + viem 2 + AI SDK (Anthropic Claude)
 
 KasAgent is a non-custodial AI DeFi copilot for Kasplex L2. Users chat with an AI agent that reads on-chain data, compares DEXes, and prepares transactions — the user signs everything in their own wallet.
@@ -12,14 +12,14 @@ KasAgent is a non-custodial AI DeFi copilot for Kasplex L2. Users chat with an A
 ```
 User <-> Chat UI <-> /api/chat <-> Claude (Anthropic)
                                       |
-                                  AI Tools (20)
+                                  AI Tools (23)
                                       |
-                          +-----------+-----------+
-                          |           |           |
-                     ZealousSwap  KrokoSwap   Shared
-                     (on-chain)   (REST API)  (oracle, history,
-                                               spy, compare)
-                          |           |           |
+                     +--------+-------+-------+--------+
+                     |        |       |       |        |
+                ZealousSwap KrokoSwap KaspaCom Strategy Shared
+                (on-chain)  (REST API)(on-chain)        (oracle, history,
+                                                         spy, compare)
+                     |        |       |                |
                      Kasplex L2 EVM (Chain ID: 202555)
 ```
 
@@ -49,18 +49,19 @@ KasAgentV2/
 │
 ├── components/
 │   ├── chat/
-│   │   ├── ChatContainer.tsx     # useChat hook, message state
+│   │   ├── ChatContainer.tsx     # useChat hook, message state, strategy auto-continue
 │   │   ├── ChatInput.tsx         # User input
 │   │   ├── ChatMessage.tsx       # Renders text + tool parts
 │   │   ├── MessageList.tsx       # Scroll container + quick actions
 │   │   ├── ToolPartRenderer.tsx  # Registry-based tool → card dispatch
 │   │   ├── ExecutionStateContext.tsx  # Tracks tx execution across cards
-│   │   └── cards/                # 22 card components
+│   │   └── cards/                # 23 card components
 │   │       ├── shared/ExecutionCardParts.tsx  # Reusable UI primitives
-│   │       ├── SwapQuoteCard.tsx              # Quote display (both DEXes)
-│   │       ├── SwapExecutionCard.tsx          # ZealousSwap swap execution
+│   │       ├── SwapQuoteCard.tsx              # Quote display (all DEXes)
+│   │       ├── SwapExecutionCard.tsx          # ZealousSwap/KaspaCom swap execution
 │   │       ├── KrokoSwapExecutionCard.tsx     # KrokoSwap Permit2 execution
 │   │       ├── SwapComparisonCard.tsx         # Cross-DEX comparison
+│   │       ├── StrategyPlanCard.tsx           # Multi-step strategy visualization
 │   │       ├── AddLiquidityCard.tsx           # Add LP
 │   │       ├── RemoveLiquidityCard.tsx        # Remove LP
 │   │       ├── FarmStakeCard.tsx / FarmUnstakeCard.tsx
@@ -76,7 +77,8 @@ KasAgentV2/
 │
 ├── config/
 │   ├── contracts.ts              # ZealousSwap contract addresses
-│   ├── protocols.ts              # Protocol registry (zealous + kroko)
+│   ├── protocols.ts              # Protocol registry (zealous + kroko + kaspacom)
+│   ├── pools.ts                  # InfinityPool address config
 │   ├── chains.ts                 # Kasplex L2 chain definition
 │   ├── wagmi.ts                  # Wagmi + RainbowKit config
 │   ├── tokens.ts                 # Token interface, KAS_NATIVE
@@ -84,6 +86,7 @@ KasAgentV2/
 │
 ├── hooks/                        # Client-side React hooks
 │   ├── usePortfolio.ts           # Aggregates all position hooks
+│   ├── useCardExecution.ts       # Shared tx execution lifecycle for all cards
 │   ├── useAllPairs.ts            # Multi-factory pair discovery
 │   ├── useTokenRegistry.ts       # Client-side token list
 │   ├── useTokenBalances.ts       # ERC-20 + native KAS
@@ -115,6 +118,7 @@ KasAgentV2/
 │           ├── oracle.ts         # getTokenPrice (multi-factory)
 │           ├── history.ts        # getTransactionHistory
 │           ├── spy.ts            # spyOnWallet (multi-factory)
+│           ├── strategy.ts       # planStrategy (multi-step DeFi plans)
 │           ├── shared/
 │           │   └── helpers.ts    # Protocol-agnostic utilities
 │           ├── zealous/          # ZealousSwap tools (14 tools)
@@ -127,9 +131,13 @@ KasAgentV2/
 │           │   ├── staking.ts    # zealous_getInfinityPoolRates, zealous_prepareInfinityStake/Unstake
 │           │   ├── yield.ts      # zealous_discoverYieldOpportunities
 │           │   └── membership.ts # zealous_getMembershipStatus
-│           └── kroko/            # KrokoSwap tools (2 tools)
+│           ├── kroko/            # KrokoSwap tools (2 tools)
+│           │   ├── index.ts
+│           │   └── swap.ts       # kroko_getSwapQuote, kroko_prepareSwap
+│           └── kaspacom/         # KaspaCom tools (2 tools)
 │               ├── index.ts
-│               └── swap.ts       # kroko_getSwapQuote, kroko_prepareSwap
+│               ├── helpers.ts    # findBestPath (KaspaCom routing)
+│               └── swap.ts       # kaspacom_getSwapQuote, kaspacom_prepareSwap
 ```
 
 ---
@@ -140,8 +148,9 @@ KasAgentV2/
 
 ```
 PROTOCOLS = {
-  zealous: { features: [swap, liquidity, farms, staking, membership], factoryType: "uniswap-v2" }
-  kroko:   { features: [swap, liquidity],                            factoryType: "uniswap-v2", apiBaseUrl: "..." }
+  zealous:  { features: [swap, liquidity, farms, staking, membership], factoryType: "uniswap-v2" }
+  kroko:    { features: [swap, liquidity],                             factoryType: "uniswap-v2", apiBaseUrl: "..." }
+  kaspacom: { features: [swap],                                        factoryType: "uniswap-v2" }
 }
 ```
 
@@ -152,26 +161,26 @@ PROTOCOLS = {
 - `system-prompt.ts` → `PROTOCOLS` → generates protocol knowledge blocks
 - `spy.ts` / `oracle.ts` → `getAllV2Factories()` → reads across all factories
 
-**Adding protocol #3 requires:**
+**Adding a new protocol requires:**
 1. A `PROTOCOLS` entry in `config/protocols.ts`
 2. Tool modules in `lib/ai/tools/<name>/`
 3. Card components + registry entries in `ToolPartRenderer.tsx`
 4. One import + spread in `lib/ai/tools/index.ts`
 
-No shared-layer edits needed.
+No shared-layer edits needed (KaspaCom was added as protocol #3 this way — zero shared-layer changes).
 
 ---
 
 ## AI Tool System
 
-### 20 Registered Tools
+### 23 Registered Tools
 
 | Tool | Protocol | Purpose |
 |------|----------|---------|
 | `zealous_getSwapQuote` | ZealousSwap | On-chain quote via Router |
 | `zealous_prepareSwap` | ZealousSwap | Prepare swap tx with approval check |
 | `zealous_getPoolReserves` | ZealousSwap | Read pair reserves |
-| `zealous_listAllPairs` | ZealousSwap | List all trading pairs |
+| `zealous_listAllPairs` | ZealousSwap | List all trading pairs (multi-factory, filterable by `protocolId`) |
 | `zealous_prepareAddLiquidity` | ZealousSwap | Prepare add-LP tx |
 | `zealous_prepareRemoveLiquidity` | ZealousSwap | Prepare remove-LP tx |
 | `zealous_getActiveFarms` | ZealousSwap | List active farm pools |
@@ -184,7 +193,10 @@ No shared-layer edits needed.
 | `zealous_getMembershipStatus` | ZealousSwap | Discount eligibility check |
 | `kroko_getSwapQuote` | KrokoSwap | API-based quote (V2+V3 routing) |
 | `kroko_prepareSwap` | KrokoSwap | Prepare swap with Permit2 approvals |
+| `kaspacom_getSwapQuote` | KaspaCom | On-chain quote via V2 Router |
+| `kaspacom_prepareSwap` | KaspaCom | Prepare swap tx (fixed 1% fee) |
 | `compareSwapQuotes` | Cross-protocol | Compare rates across all DEXes |
+| `planStrategy` | Cross-protocol | Multi-step DeFi strategy planner with live on-chain quotes |
 | `getTokenPrice` | Shared | On-chain spot price (multi-factory) |
 | `getTransactionHistory` | Shared | Explorer API tx history |
 | `spyOnWallet` | Shared | Read-only portfolio for any address |
@@ -203,10 +215,13 @@ No shared-layer edits needed.
 const TOOL_CARD_REGISTRY = {
   zealous_getSwapQuote: SwapQuoteCard,
   zealous_prepareSwap: SwapExecutionCard,
-  kroko_getSwapQuote: SwapQuoteCard,       // Reuses same card with protocol badge
+  kroko_getSwapQuote: SwapQuoteCard,       // Reuses same card
   kroko_prepareSwap: KrokoSwapExecutionCard,
+  kaspacom_getSwapQuote: SwapQuoteCard,    // Reuses same card
+  kaspacom_prepareSwap: SwapExecutionCard, // Reuses ZealousSwap card (same V2 ABI)
   compareSwapQuotes: SwapComparisonCard,
-  // ... 17 more entries
+  planStrategy: StrategyPlanCard,
+  // ... 15 more entries
 };
 ```
 
@@ -235,15 +250,71 @@ AI Tool                              Execution Card
 6. Return tx + approval state
 ```
 
+### KaspaCom (On-Chain, V2 Fork)
+```
+AI Tool                              Execution Card
+1. resolveTokenAddress()             1. approve(Router, amount) [if needed]
+2. findBestPath() via getAmountsOut  2. swapExactETHForTokens / swapExactTokensForETH
+3. checkAllowance(Router)            3. Wait for receipt
+4. Return tx params                  4. Show explorer link
+```
+Fixed 1% swap fee hardcoded in pair math. No discounts. Reuses ZealousSwap's `SwapExecutionCard`.
+
 ### Cross-DEX Comparison
 ```
 compareSwapQuotes tool:
-1. Promise.allSettled([zealousQuote, krokoQuote])
+1. Promise.allSettled([zealousQuote, krokoQuote, kaspacomQuote])
 2. Filter errors, compare amountOut
 3. >0.5% diff → best price wins
 4. ≤0.5% diff → lower price impact wins
 5. Return SwapComparisonResult → SwapComparisonCard
 ```
+
+---
+
+## Strategy Planning & Auto-Continue
+
+### Strategy Tool (`planStrategy`)
+
+Creates multi-step DeFi plans with live on-chain quotes. Each step is computed server-side:
+
+```
+AI calls planStrategy({ steps: [...] })
+  → For each step:
+    1. Resolve tokens + amounts (or "auto" from previous step output)
+    2. Fetch live quote (swap via DEX router, LP via reserves, etc.)
+    3. Build StrategyStep with toolToCall, estimated amounts
+  → Return StrategyPlanResult → StrategyPlanCard (read-only visualization)
+```
+
+`resolveToolToCall()` maps step type + protocol to the exact execution tool name (e.g., `swap` + `zealous` → `zealous_prepareSwap`).
+
+### Auto-Continue Flow (`ChatContainer.tsx`)
+
+After a strategy is planned, execution is hands-free — the user only signs transactions:
+
+```
+User: "Farm 5 KAS"
+  → AI calls planStrategy → StrategyPlanCard renders (3 steps)
+  → User says "start" → AI prepares step 1 tool → SwapExecutionCard
+  → User signs tx → markExecuted("success") fires
+  → [2.5s] Auto-continue sends: "Step 1 completed. Continue with step 2..."
+  → AI prepares step 2 → AddLiquidityCard
+  → User signs tx → markExecuted("success")
+  → [2.5s] Auto-continue sends: "Step 2 completed. Continue with step 3..."
+  → AI prepares step 3 → FarmStakeCard
+  → User signs tx → markExecuted("success")
+  → [2.5s] All steps done → sends: "All 3 steps completed!"
+  → AI congratulates user
+```
+
+**Key implementation details:**
+- Lives entirely in `ChatContainer.tsx` — zero changes to execution cards or hooks
+- `findActiveStrategy(messages)` — scans messages backwards for most recent `planStrategy` output
+- `countCompletedStrategySteps(messages, executionStates, strategy)` — counts tool calls after the plan that match the strategy's `toolToCall` values and have `state === "success"`
+- 2.5s delay ensures portfolio refetch completes before AI reads updated wallet data
+- Guards: only fires on `"success"` (not cancel/error), only when chat is `"ready"` (not streaming), skips if all steps done
+- Timer cleanup on unmount prevents stale sends
 
 ---
 

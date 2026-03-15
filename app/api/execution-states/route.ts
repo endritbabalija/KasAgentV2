@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const txHash: string | undefined = body.txHash;
 
     if (!wallet || !ETH_ADDRESS_RE.test(wallet)) {
-      return Response.json({ error: "Invalid wallet" }, { status: 400 });
+      return Response.json({ error: "Invalid wallet address" }, { status: 400 });
     }
 
     if (!conversationId || !toolCallId || !state) {

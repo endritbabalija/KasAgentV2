@@ -23,6 +23,7 @@ interface DiscoveryCache {
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 let cached: DiscoveryCache | null = null;
 let cachedAt = 0;
+let inflight: Promise<DiscoveryCache> | null = null;
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
 
@@ -111,7 +112,14 @@ async function discoverFactory(
 async function discoverAll(): Promise<DiscoveryCache> {
   const now = Date.now();
   if (cached && now - cachedAt < CACHE_TTL) return cached;
+  if (inflight) return inflight;
 
+  inflight = doDiscoverAll().finally(() => { inflight = null; });
+  return inflight;
+}
+
+async function doDiscoverAll(): Promise<DiscoveryCache> {
+  const now = Date.now();
   const factories = getAllV2Factories();
 
   // Discover pairs from all factories in parallel

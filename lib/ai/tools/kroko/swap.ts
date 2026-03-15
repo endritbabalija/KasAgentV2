@@ -185,7 +185,7 @@ export const krokoSwapTools = {
           amountOut: formatUnits(rawAmountOut, decimalsOut),
           amountOutMin: swapData.quote.minAmountOut
             ? formatUnits(BigInt(swapData.quote.minAmountOut), decimalsOut)
-            : formatUnits(rawAmountOut, decimalsOut),
+            : formatUnits(rawAmountOut * (1000n - BigInt(Math.round(slippage * 10))) / 1000n, decimalsOut),
           slippage,
           priceImpact: impactNum.toFixed(2),
           route: formatRoute(quote.route),

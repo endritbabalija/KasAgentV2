@@ -111,7 +111,9 @@ export function useConversations(walletAddress: string | undefined) {
             messages: currentMessages,
           }),
         });
-      } catch {}
+      } catch (err) {
+        console.error("[createNewChat] Failed to save current conversation:", err);
+      }
     }
     setActiveConversationId(null);
     setLoadedMessages([]);

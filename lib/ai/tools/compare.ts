@@ -38,7 +38,7 @@ export const compareTools = {
         (async (): Promise<SwapComparisonQuote> => {
           const discount = walletAddress
             ? await checkDiscountEligibility(walletAddress)
-            : { isEligible: false };
+            : { isEligible: false, source: "None" };
           const { path, amounts } = await findBestPath(addressIn, addressOut, rawAmountIn, discount.isEligible);
           const amountOut = amounts[amounts.length - 1];
           const isMultiHop = path.length > 2;

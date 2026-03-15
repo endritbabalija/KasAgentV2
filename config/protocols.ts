@@ -42,7 +42,7 @@ export const PROTOCOLS: Record<ProtocolId, ProtocolConfig> = {
     id: "kroko",
     name: "KrokoSwap",
     shortName: "Kroko",
-    features: ["swap", "liquidity"],
+    features: ["swap"],
     contracts: {
       permit2: "0x2E1987F680FD7Bc8B33d3Bf94f12B988A0B50034" as `0x${string}`,
       universalRouter: "0xefeCc1c2dE3BfE4C6D43030F2AcDD5C3cE279024" as `0x${string}`,
@@ -78,17 +78,6 @@ export const PROTOCOLS: Record<ProtocolId, ProtocolConfig> = {
 export const SHARED = {
   WKAS: "0x2c2Ae87Ba178F48637acAe54B87c3924F544a83e" as `0x${string}`,
 };
-
-/** Scan all protocol contracts and return the matching ProtocolConfig, or null. */
-export function getProtocolByContract(address: string): ProtocolConfig | null {
-  const lower = address.toLowerCase();
-  for (const protocol of Object.values(PROTOCOLS)) {
-    for (const addr of Object.values(protocol.contracts)) {
-      if (addr.toLowerCase() === lower) return protocol;
-    }
-  }
-  return null;
-}
 
 /** Return all V2 factory addresses with their protocol IDs. */
 export function getAllV2Factories(): { protocolId: ProtocolId; address: `0x${string}` }[] {

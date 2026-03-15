@@ -92,8 +92,8 @@ export function RemoveLiquidityCard({ data, toolCallId, executionState }: { data
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-        <DetailRow label="Min Received" value={`${formatAmount(data.amountAMin)} ${data.tokenA}`} />
-        <DetailRow label="" value={`${formatAmount(data.amountBMin)} ${data.tokenB}`} />
+        <DetailRow label="Min Received (A)" value={`${formatAmount(data.amountAMin)} ${data.tokenA}`} />
+        <DetailRow label="Min Received (B)" value={`${formatAmount(data.amountBMin)} ${data.tokenB}`} />
         <DetailRow label="Gas Fee" value={`~${formatAmount(data.gasEstimate)} KAS`} />
         <DetailRow label="Slippage" value={`${data.slippage}%`} />
       </div>

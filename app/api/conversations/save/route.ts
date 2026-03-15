@@ -23,10 +23,10 @@ export async function POST(req: Request) {
     const messages: UIMessage[] = body.messages;
 
     if (!wallet || !ETH_ADDRESS_RE.test(wallet)) {
-      return Response.json({ error: "Invalid wallet" }, { status: 400 });
+      return Response.json({ error: "Invalid wallet address" }, { status: 400 });
     }
 
-    if (!messages || messages.length === 0) {
+    if (!Array.isArray(messages) || messages.length === 0) {
       return Response.json({ error: "No messages" }, { status: 400 });
     }
 

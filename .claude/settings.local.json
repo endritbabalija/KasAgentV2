@@ -36,7 +36,8 @@
       "Bash(cd \"C:\\\\Users\\\\endri\\\\documents\\\\KasAgentV2\" && rm lib/ai/tools/swap.ts lib/ai/tools/liquidity.ts lib/ai/tools/pairs.ts lib/ai/tools/farms.ts lib/ai/tools/staking.ts lib/ai/tools/yield.ts lib/ai/tools/membership.ts)",
       "WebFetch(domain:dex.kasplex.org)",
       "mcp__plugin_supabase_supabase__list_migrations",
-      "mcp__plugin_supabase_supabase__search_docs"
+      "mcp__plugin_supabase_supabase__search_docs",
+      "Bash(npm list:*)"
     ]
   }
 }

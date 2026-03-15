@@ -19,7 +19,8 @@ export async function checkDiscountEligibility(
     })) as [boolean, string];
 
     return { isEligible, source };
-  } catch {
+  } catch (err) {
+    console.error("[checkDiscountEligibility] Failed:", err);
     return { isEligible: false, source: "None" };
   }
 }

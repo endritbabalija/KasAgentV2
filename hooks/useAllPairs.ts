@@ -33,6 +33,7 @@ export function useAllPairs(enabled: boolean = true) {
   const {
     data: pairCountsRaw,
     isLoading: countsLoading,
+    isError: countsError,
     refetch: countsRefetch,
   } = useReadContracts({
     contracts: pairCountContracts,
@@ -86,6 +87,7 @@ export function useAllPairs(enabled: boolean = true) {
   const {
     data: pairAddressesRaw,
     isLoading: addressesLoading,
+    isError: addressesError,
     refetch: addressesRefetch,
   } = useReadContracts({
     contracts: pairAddressContracts,
@@ -138,6 +140,7 @@ export function useAllPairs(enabled: boolean = true) {
   const {
     data: pairDetailsRaw,
     isLoading: detailsLoading,
+    isError: detailsError,
     refetch: detailsRefetch,
   } = useReadContracts({
     contracts: pairDetailContracts,
@@ -167,6 +170,7 @@ export function useAllPairs(enabled: boolean = true) {
     pairs,
     pairCount: totalPairCount,
     isLoading: countsLoading || addressesLoading || detailsLoading,
+    isError: countsError || addressesError || detailsError,
     refetch: () => {
       countsRefetch();
       addressesRefetch();

@@ -390,7 +390,7 @@ export const strategyTools = {
 
       const discount = walletAddress
         ? await checkDiscountEligibility(walletAddress)
-        : { isEligible: false };
+        : { isEligible: false, source: "None" };
 
       let prev: ChainedOutput | null = null;
       const computedSteps: StrategyStep[] = [];

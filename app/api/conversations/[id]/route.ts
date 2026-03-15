@@ -53,6 +53,9 @@ export async function GET(
     }
 
     // Build execution state map (keyed by tool_call_id)
+    if (execResult.error) {
+      console.error("[GET /api/conversations/[id]] execution states error:", execResult.error);
+    }
     const executionStates: Record<string, { state: string; txHash?: string }> = {};
     if (execResult.data) {
       for (const row of execResult.data) {

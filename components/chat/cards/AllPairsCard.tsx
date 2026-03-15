@@ -55,7 +55,8 @@ export function AllPairsCard({ data }: { data: AllPairsResult }) {
   const [page, setPage] = useState(0);
 
   const totalPages = Math.max(1, Math.ceil(data.pairs.length / PAGE_SIZE));
-  const start = page * PAGE_SIZE;
+  const safePage = Math.min(page, totalPages - 1);
+  const start = safePage * PAGE_SIZE;
   const pageItems = data.pairs.slice(start, start + PAGE_SIZE);
   const maxLiquidity = data.pairs.length > 0 ? data.pairs[0].totalLiquidityKas : 0;
   const filtered = data.totalPairsOnChain - data.pairs.length;
@@ -110,7 +111,7 @@ export function AllPairsCard({ data }: { data: AllPairsResult }) {
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-700/30">
           <button
             onClick={() => setPage((p) => p - 1)}
-            disabled={page === 0}
+            disabled={safePage === 0}
             className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed bg-zinc-700/40 text-zinc-300 hover:bg-zinc-700/70"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -119,11 +120,11 @@ export function AllPairsCard({ data }: { data: AllPairsResult }) {
             Prev
           </button>
           <span className="text-xs text-zinc-500">
-            Page {page + 1} of {totalPages}
+            Page {safePage + 1} of {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => p + 1)}
-            disabled={page >= totalPages - 1}
+            disabled={safePage >= totalPages - 1}
             className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed bg-zinc-700/40 text-zinc-300 hover:bg-zinc-700/70"
           >
             Next
