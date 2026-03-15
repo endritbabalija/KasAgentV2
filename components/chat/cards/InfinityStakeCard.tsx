@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount, useConfig, useWriteContract } from "wagmi";
-import { waitForTransactionReceipt } from "@wagmi/core";
-import { erc20Abi, infinityPoolZealAbi, infinityPoolNachoAbi, infinityPoolKasperAbi } from "@/config/abis";
+import { useAccount } from "wagmi";
+import { erc20Abi, infinityPoolZealAbi } from "@/config/abis";
+import { INFINITY_POOL_ABIS } from "@/config/pools";
+import { useCardExecution, type ExecutionStep } from "@/hooks/useCardExecution";
 import type { PrepareInfinityStakeResult } from "@/lib/ai/tool-types";
 import {
   TokenBadge,
@@ -14,76 +14,42 @@ import {
   CancelledState,
   DetailRow,
 } from "./shared/ExecutionCardParts";
-import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const poolAbis: Record<string, any> = {
-  ZEAL: infinityPoolZealAbi,
-  NACHO: infinityPoolNachoAbi,
-  KASPER: infinityPoolKasperAbi,
-};
-
-type InfinityStakeState = "idle" | "approving" | "staking" | "success" | "error" | "cancelled";
+import type { ExecutionRecord } from "../ExecutionStateContext";
 
 export function InfinityStakeCard({ data, toolCallId, executionState }: { data: PrepareInfinityStakeResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { isConnected } = useAccount();
-  const config = useConfig();
-  const { markExecuted } = useExecutionState();
-  const [state, setState] = useState<InfinityStakeState>((executionState?.state as InfinityStakeState) ?? "idle");
-  const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
-  const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
-  const { writeContractAsync: writeStakeAsync, reset: resetStake } = useWriteContract();
+  const steps: ExecutionStep[] = [];
 
-  async function handleExecute() {
-    setErrorMsg("");
-    try {
-      // Approve token if needed
-      if (data.needsApproval) {
-        setState("approving");
-        const approveHash = await writeApproveAsync({
+  if (data.needsApproval) {
+    steps.push({
+      label: `Approving ${data.token}...`,
+      execute: async ({ writeContractAsync }) =>
+        writeContractAsync({
           address: data.tx.tokenAddress as `0x${string}`,
           abi: erc20Abi,
           functionName: "approve",
           args: [data.tx.pool as `0x${string}`, BigInt(data.tx.rawAmount)],
-        });
-        await waitForTransactionReceipt(config, { hash: approveHash });
-      }
+        }),
+    });
+  }
 
-      // Stake
-      setState("staking");
-      const abi = poolAbis[data.token] ?? infinityPoolZealAbi;
-      const hash = await writeStakeAsync({
+  const abi = INFINITY_POOL_ABIS[data.token] ?? infinityPoolZealAbi;
+  steps.push({
+    label: "Staking...",
+    execute: async ({ writeContractAsync }) =>
+      writeContractAsync({
         address: data.tx.pool as `0x${string}`,
         abi,
         functionName: "stake",
         args: [BigInt(data.tx.rawAmount)],
-      });
+      }),
+  });
 
-      setTxHash(hash);
-      await waitForTransactionReceipt(config, { hash });
-      setState("success");
-      if (toolCallId) markExecuted(toolCallId, "success", hash);
-    } catch (err) {
-      setState("error");
-      setErrorMsg((err as Error).message.split("\n")[0]);
-    }
-  }
+  const { status, currentStepLabel, isLoading, errorMsg, txHash, handleExecute, handleRetry, handleCancel } =
+    useCardExecution({ steps, toolCallId, executionState });
 
-  function handleRetry() {
-    setState("idle");
-    setErrorMsg("");
-    setTxHash(undefined);
-    resetApprove();
-    resetStake();
-  }
-
-  const isLoading = state === "approving" || state === "staking";
-
-  if (state === "cancelled") {
-    return <CancelledState label="InfinityPool Stake" />;
-  }
+  if (status === "cancelled") return <CancelledState label="InfinityPool Stake" />;
 
   return (
     <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
@@ -121,17 +87,17 @@ export function InfinityStakeCard({ data, toolCallId, executionState }: { data: 
 
       <ActionArea
         isConnected={isConnected}
-        state={state}
+        state={status}
         isLoading={isLoading}
         txHash={txHash}
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
+        onCancel={handleCancel}
         walletMessage="Connect your wallet to stake"
         successMessage={`${data.token} staked! You received x${data.token}.`}
         buttonLabel={data.needsApproval ? `Approve & Stake ${data.token}` : `Stake ${data.token}`}
-        loadingLabel={state === "approving" ? `Approving ${data.token}...` : "Staking..."}
+        loadingLabel={currentStepLabel}
       />
     </div>
   );

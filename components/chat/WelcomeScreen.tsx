@@ -16,7 +16,7 @@ const DEFAULT_SUGGESTIONS: Suggestion[] = [
 const POSITION_SUGGESTIONS: Suggestion[] = [
   { title: "How are my LP positions doing?", subtitle: "track returns" },
   { title: "Check my pending farm rewards", subtitle: "claim earnings" },
-  { title: "Find the best yield opportunities", subtitle: "optimize APR" },
+  { title: "Optimize my DeFi positions", subtitle: "AI strategy planner" },
   { title: "What are the best swap routes?", subtitle: "trading" },
   { title: "Show my portfolio summary", subtitle: "full overview" },
 ];
@@ -25,7 +25,7 @@ const BALANCE_ONLY_SUGGESTIONS: Suggestion[] = [
   { title: "Show my portfolio summary", subtitle: "see what you have" },
   { title: "Find the best yield opportunities", subtitle: "put tokens to work" },
   { title: "What are the best swap routes?", subtitle: "trading" },
-  { title: "How does staking work?", subtitle: "education" },
+  { title: "Put my tokens to work", subtitle: "AI strategy planner" },
   { title: "What pools can I provide liquidity to?", subtitle: "LP discovery" },
 ];
 

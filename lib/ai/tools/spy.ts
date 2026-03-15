@@ -8,10 +8,8 @@ import {
   factoryAbi,
   pairAbi,
   masterchefAbi,
-  infinityPoolZealAbi,
-  infinityPoolNachoAbi,
-  infinityPoolKasperAbi,
 } from "@/config/abis";
+import { INFINITY_POOLS } from "@/config/pools";
 import { getAllTokens, addressToSymbol } from "@/lib/token-registry";
 import { checkDiscountEligibility } from "@/lib/discount";
 import { client } from "./helpers";
@@ -25,27 +23,6 @@ import type {
 } from "@/lib/ai/tool-types";
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
-
-const INFINITY_POOLS = [
-  {
-    name: "ZEAL",
-    address: CONTRACTS.INFINITY_POOL_ZEAL,
-    abi: infinityPoolZealAbi,
-    xTokenFn: "xZealToken" as const,
-  },
-  {
-    name: "NACHO",
-    address: CONTRACTS.INFINITY_POOL_NACHO,
-    abi: infinityPoolNachoAbi,
-    xTokenFn: "xNachoToken" as const,
-  },
-  {
-    name: "KASPER",
-    address: CONTRACTS.INFINITY_POOL_KASPER,
-    abi: infinityPoolKasperAbi,
-    xTokenFn: "xKasperToken" as const,
-  },
-] as const;
 
 export const spyTools = {
   spyOnWallet: tool({

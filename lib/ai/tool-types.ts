@@ -493,6 +493,41 @@ export interface KrokoPrepareSwapResult {
   error?: string;
 }
 
+// --- Strategy Planner types ---
+
+export const STRATEGY_STEP_TYPES = [
+  "swap",
+  "addLiquidity",
+  "removeLiquidity",
+  "farmStake",
+  "farmUnstake",
+  "infinityStake",
+  "infinityUnstake",
+] as const;
+
+export type StrategyStepType = (typeof STRATEGY_STEP_TYPES)[number];
+
+export interface StrategyStep {
+  stepNumber: number;
+  action: string;
+  toolToCall: string;
+  protocol: string;
+  type: StrategyStepType;
+  estimatedInput: string;
+  estimatedOutput: string;
+  tokens: string[];
+  note?: string;
+}
+
+export interface StrategyPlanResult {
+  title: string;
+  summary: string;
+  steps: StrategyStep[];
+  estimatedTotalGas: string;
+  disclaimer: string;
+  error?: string;
+}
+
 // --- Swap Comparison types ---
 
 export interface SwapComparisonQuote {

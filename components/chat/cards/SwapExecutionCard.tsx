@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount, useConfig, useWriteContract } from "wagmi";
-import { waitForTransactionReceipt } from "@wagmi/core";
+import { useAccount } from "wagmi";
 import { v2SwapAbi, erc20Abi } from "@/config/abis";
+import { useCardExecution, type ExecutionStep } from "@/hooks/useCardExecution";
 import type { PrepareSwapResult } from "@/lib/ai/tool-types";
 import {
   TokenBadge,
@@ -14,47 +13,36 @@ import {
   ActionArea,
   CancelledState,
 } from "./shared/ExecutionCardParts";
-import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
-
-type SwapState = "idle" | "approving" | "swapping" | "success" | "error" | "cancelled";
+import type { ExecutionRecord } from "../ExecutionStateContext";
 
 export function SwapExecutionCard({ data, toolCallId, executionState }: { data: PrepareSwapResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { address, isConnected } = useAccount();
-  const config = useConfig();
-  const { markExecuted } = useExecutionState();
-  const [state, setState] = useState<SwapState>((executionState?.state as SwapState) ?? "idle");
-  const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
-  const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
-  const { writeContractAsync: writeSwapAsync, reset: resetSwap } = useWriteContract();
+  const steps: ExecutionStep[] = [];
 
-  async function handleExecute() {
-    setErrorMsg("");
-    try {
-      if (data.needsApproval) {
-        setState("approving");
-        const approveHash = await writeApproveAsync({
+  if (data.needsApproval) {
+    steps.push({
+      label: "Approving...",
+      execute: async ({ writeContractAsync }) =>
+        writeContractAsync({
           address: data.tx.tokenInAddress as `0x${string}`,
           abi: erc20Abi,
           functionName: "approve",
           args: [data.tx.router as `0x${string}`, BigInt(data.tx.rawAmountIn)],
-        });
-        await waitForTransactionReceipt(config, { hash: approveHash });
-      }
+        }),
+    });
+  }
 
+  steps.push({
+    label: "Swapping...",
+    execute: async ({ writeContractAsync }) => {
       const { tx, swapType } = data;
       const path = tx.path as `0x${string}`[];
       const deadline = BigInt(tx.deadline);
-
-      setState("swapping");
-
-      // Dispatch using contractInfo.functionName — supports both ZealousSwap (KAS)
-      // and KaspaCom (ETH) V2 router variants via the combined v2SwapAbi
       const fnName = data.contractInfo.functionName;
-      let hash: `0x${string}`;
+
       if (swapType === "KAS_TO_TOKEN") {
-        hash = await writeSwapAsync({
+        return writeContractAsync({
           address: tx.router as `0x${string}`,
           abi: v2SwapAbi,
           functionName: fnName as "swapExactKASForTokens" | "swapExactETHForTokens",
@@ -62,82 +50,46 @@ export function SwapExecutionCard({ data, toolCallId, executionState }: { data: 
           value: BigInt(tx.value),
         });
       } else if (swapType === "TOKEN_TO_KAS") {
-        hash = await writeSwapAsync({
+        return writeContractAsync({
           address: tx.router as `0x${string}`,
           abi: v2SwapAbi,
           functionName: fnName as "swapExactTokensForKAS" | "swapExactTokensForETH",
-          args: [
-            BigInt(tx.rawAmountIn),
-            BigInt(tx.rawAmountOutMin),
-            path,
-            address!,
-            deadline,
-          ],
+          args: [BigInt(tx.rawAmountIn), BigInt(tx.rawAmountOutMin), path, address!, deadline],
         });
       } else {
-        hash = await writeSwapAsync({
+        return writeContractAsync({
           address: tx.router as `0x${string}`,
           abi: v2SwapAbi,
           functionName: "swapExactTokensForTokens",
-          args: [
-            BigInt(tx.rawAmountIn),
-            BigInt(tx.rawAmountOutMin),
-            path,
-            address!,
-            deadline,
-          ],
+          args: [BigInt(tx.rawAmountIn), BigInt(tx.rawAmountOutMin), path, address!, deadline],
         });
       }
+    },
+  });
 
-      setTxHash(hash);
-      await waitForTransactionReceipt(config, { hash });
-      setState("success");
-      if (toolCallId) markExecuted(toolCallId, "success", hash);
-    } catch (err) {
-      setState("error");
-      setErrorMsg((err as Error).message.split("\n")[0]);
-    }
-  }
+  const { status, currentStepLabel, isLoading, errorMsg, txHash, handleExecute, handleRetry, handleCancel } =
+    useCardExecution({ steps, toolCallId, executionState });
 
-  function handleRetry() {
-    setState("idle");
-    setErrorMsg("");
-    setTxHash(undefined);
-    resetApprove();
-    resetSwap();
-  }
-
-  const isLoading = state === "approving" || state === "swapping";
-  const loadingLabel = state === "approving" ? "Approving..." : "Swapping...";
-  if (state === "cancelled") {
-    return <CancelledState />;
-  }
+  if (status === "cancelled") return <CancelledState />;
 
   return (
     <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
-      {/* Header */}
       <div className="text-xs text-zinc-500 uppercase tracking-wide mb-3">
         Transaction Summary
       </div>
 
-      {/* Swap amounts */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <TokenBadge symbol={data.tokenIn} />
-          <span className="font-mono text-teal-400 text-lg">
-            {formatAmount(data.amountIn)}
-          </span>
+          <span className="font-mono text-teal-400 text-lg">{formatAmount(data.amountIn)}</span>
         </div>
         <span className="text-zinc-500 text-lg">&rarr;</span>
         <div className="flex items-center gap-2">
           <TokenBadge symbol={data.tokenOut} />
-          <span className="font-mono text-teal-400 text-lg">
-            {formatAmount(data.amountOut)}
-          </span>
+          <span className="font-mono text-teal-400 text-lg">{formatAmount(data.amountOut)}</span>
         </div>
       </div>
 
-      {/* Fee & Output breakdown */}
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         <DetailRow label="DEX Fee" value={`${data.dexFeeAmount} (${data.feeRate})${data.discountApplied ? " — Discounted" : ""}`} />
         <DetailRow label="Gas Fee" value={`~${formatAmount(data.gasEstimate)} KAS`} />
@@ -157,12 +109,10 @@ export function SwapExecutionCard({ data, toolCallId, executionState }: { data: 
         </div>
       </div>
 
-      {/* Risk warnings */}
       <div className="mt-3">
         <RiskFlagList flags={data.riskFlags} />
       </div>
 
-      {/* Contract interaction (collapsible) */}
       {data.contractInfo && (
         <div className="mt-3">
           <ContractInfoAccordion info={data.contractInfo} />
@@ -171,17 +121,17 @@ export function SwapExecutionCard({ data, toolCallId, executionState }: { data: 
 
       <ActionArea
         isConnected={isConnected}
-        state={state}
+        state={status}
         isLoading={isLoading}
         txHash={txHash}
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
+        onCancel={handleCancel}
         walletMessage="Connect your wallet to execute this swap"
         successMessage="Swap confirmed!"
         buttonLabel={data.needsApproval ? "Approve & Swap" : "Execute Swap"}
-        loadingLabel={loadingLabel}
+        loadingLabel={currentStepLabel}
       />
     </div>
   );

@@ -14,6 +14,48 @@ export { client };
 export { mcResult };
 export { resolveTokenAddress, getTokenDecimals, addressToSymbol };
 
+/**
+ * Generic V2 path finder — works with any Uniswap-V2-style router.
+ * Tries direct path first, falls back to WKAS intermediary.
+ */
+export async function findBestPathForRouter(opts: {
+  router: `0x${string}`;
+  routerAbi: readonly unknown[];
+  wkas: `0x${string}`;
+  addressIn: `0x${string}`;
+  addressOut: `0x${string}`;
+  rawAmountIn: bigint;
+  extraArgs?: readonly unknown[];
+}): Promise<{ path: `0x${string}`[]; amounts: bigint[] }> {
+  const { router, routerAbi, wkas, addressIn, addressOut, rawAmountIn, extraArgs = [] } = opts;
+
+  // Try direct path first
+  try {
+    const amounts = (await client.readContract({
+      address: router,
+      abi: routerAbi,
+      functionName: "getAmountsOut",
+      args: [rawAmountIn, [addressIn, addressOut], ...extraArgs],
+    })) as bigint[];
+    return { path: [addressIn, addressOut], amounts };
+  } catch {
+    // Direct path failed — try routing through WKAS
+  }
+
+  // Skip WKAS hop if either token IS WKAS
+  if (addressIn.toLowerCase() === wkas.toLowerCase() || addressOut.toLowerCase() === wkas.toLowerCase()) {
+    throw new Error("No liquidity path found for this pair");
+  }
+
+  const amounts = (await client.readContract({
+    address: router,
+    abi: routerAbi,
+    functionName: "getAmountsOut",
+    args: [rawAmountIn, [addressIn, wkas, addressOut], ...extraArgs],
+  })) as bigint[];
+  return { path: [addressIn, wkas, addressOut], amounts };
+}
+
 export async function estimateGasCost(gasUnits: bigint, fallback: string): Promise<string> {
   try {
     const gasPrice = await client.getGasPrice();

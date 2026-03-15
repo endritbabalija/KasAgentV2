@@ -7,6 +7,7 @@ export interface QuickAction {
 const ACTION_TOOLS = new Set([
   "zealous_prepareSwap",
   "kroko_prepareSwap",
+  "kaspacom_prepareSwap",
   "executeSwap",
   "zealous_prepareAddLiquidity",
   "executeAddLiquidity",
@@ -103,6 +104,22 @@ export function getQuickActions(
           label: "Execute best",
           message: "Swap on the recommended DEX",
           variant: "primary",
+        },
+      ];
+    }
+    case "planStrategy": {
+      const steps = (out?.steps as Array<{ action?: string }>) ?? [];
+      const firstAction = steps[0]?.action ?? "step 1";
+      return [
+        {
+          label: `Start: ${firstAction.length > 30 ? firstAction.slice(0, 30) + "…" : firstAction}`,
+          message: `Let's start the strategy. Execute step 1: ${firstAction}`,
+          variant: "primary",
+        },
+        {
+          label: "Modify plan",
+          message: "I'd like to modify this strategy plan",
+          variant: "secondary",
         },
       ];
     }

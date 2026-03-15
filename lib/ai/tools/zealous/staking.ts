@@ -8,6 +8,7 @@ import {
   infinityPoolKasperAbi,
   erc20Abi,
 } from "@/config/abis";
+import { getInfinityPool } from "@/config/pools";
 import type { RiskFlag, RiskLevel } from "../../tool-types";
 import { client, resolveTokenAddress, getTokenDecimals, estimateGasCost } from "../shared/helpers";
 import { mcResult } from "@/lib/multicall";
@@ -72,14 +73,7 @@ export const zealousStakingTools = {
     }),
     execute: async ({ token, amount, walletAddress }) => {
       const sym = token.toUpperCase();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const poolMap: Record<string, { address: `0x${string}`; abi: any }> = {
-        ZEAL: { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi },
-        NACHO: { address: CONTRACTS.INFINITY_POOL_NACHO, abi: infinityPoolNachoAbi },
-        KASPER: { address: CONTRACTS.INFINITY_POOL_KASPER, abi: infinityPoolKasperAbi },
-      };
-
-      const pool = poolMap[sym];
+      const pool = getInfinityPool(sym);
       if (!pool) {
         return { error: `Unsupported InfinityPool token: ${token}. Supported: ZEAL, NACHO, KASPER` };
       }
@@ -166,14 +160,7 @@ export const zealousStakingTools = {
     }),
     execute: async ({ token, amount, walletAddress }) => {
       const sym = token.toUpperCase();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const poolMap: Record<string, { address: `0x${string}`; abi: any; xTokenFn: string }> = {
-        ZEAL: { address: CONTRACTS.INFINITY_POOL_ZEAL, abi: infinityPoolZealAbi, xTokenFn: "xZealToken" },
-        NACHO: { address: CONTRACTS.INFINITY_POOL_NACHO, abi: infinityPoolNachoAbi, xTokenFn: "xNachoToken" },
-        KASPER: { address: CONTRACTS.INFINITY_POOL_KASPER, abi: infinityPoolKasperAbi, xTokenFn: "xKasperToken" },
-      };
-
-      const pool = poolMap[sym];
+      const pool = getInfinityPool(sym);
       if (!pool) {
         return { error: `Unsupported InfinityPool token: ${token}. Supported: ZEAL, NACHO, KASPER` };
       }

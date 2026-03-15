@@ -56,8 +56,9 @@ export function MessageList({
           part.type === "dynamic-tool"
             ? (raw.toolName as string)
             : part.type.split("-").slice(1).join("-");
-        if (raw.state === "output-available" && raw.output) {
-          actions.push(...getQuickActions(toolName, raw.output));
+        const output = raw.output as Record<string, unknown> | undefined;
+        if (raw.state === "output-available" && output && !output.error) {
+          actions.push(...getQuickActions(toolName, output));
         }
       }
     }

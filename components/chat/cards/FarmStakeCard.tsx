@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount, useConfig, useWriteContract } from "wagmi";
-import { waitForTransactionReceipt } from "@wagmi/core";
+import { useAccount } from "wagmi";
 import { masterchefAbi, erc20Abi } from "@/config/abis";
+import { useCardExecution, type ExecutionStep } from "@/hooks/useCardExecution";
 import type { PrepareFarmStakeResult } from "@/lib/ai/tool-types";
 import {
   formatAmount,
@@ -13,68 +12,41 @@ import {
   CancelledState,
   DetailRow,
 } from "./shared/ExecutionCardParts";
-import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
-
-type FarmStakeState = "idle" | "approving" | "depositing" | "success" | "error" | "cancelled";
+import type { ExecutionRecord } from "../ExecutionStateContext";
 
 export function FarmStakeCard({ data, toolCallId, executionState }: { data: PrepareFarmStakeResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { isConnected } = useAccount();
-  const config = useConfig();
-  const { markExecuted } = useExecutionState();
-  const [state, setState] = useState<FarmStakeState>((executionState?.state as FarmStakeState) ?? "idle");
-  const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
-  const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
-  const { writeContractAsync: writeDepositAsync, reset: resetDeposit } = useWriteContract();
+  const steps: ExecutionStep[] = [];
 
-  async function handleExecute() {
-    setErrorMsg("");
-    try {
-      // Approve LP token if needed
-      if (data.needsApproval) {
-        setState("approving");
-        const approveHash = await writeApproveAsync({
+  if (data.needsApproval) {
+    steps.push({
+      label: "Approving LP...",
+      execute: async ({ writeContractAsync }) =>
+        writeContractAsync({
           address: data.tx.lpToken as `0x${string}`,
           abi: erc20Abi,
           functionName: "approve",
           args: [data.tx.masterChef as `0x${string}`, BigInt(data.tx.rawAmount)],
-        });
-        await waitForTransactionReceipt(config, { hash: approveHash });
-      }
+        }),
+    });
+  }
 
-      // Deposit
-      setState("depositing");
-      const hash = await writeDepositAsync({
+  steps.push({
+    label: "Depositing...",
+    execute: async ({ writeContractAsync }) =>
+      writeContractAsync({
         address: data.tx.masterChef as `0x${string}`,
         abi: masterchefAbi,
         functionName: "deposit",
         args: [BigInt(data.tx.pid), BigInt(data.tx.rawAmount)],
-      });
+      }),
+  });
 
-      setTxHash(hash);
-      await waitForTransactionReceipt(config, { hash });
-      setState("success");
-      if (toolCallId) markExecuted(toolCallId, "success", hash);
-    } catch (err) {
-      setState("error");
-      setErrorMsg((err as Error).message.split("\n")[0]);
-    }
-  }
+  const { status, currentStepLabel, isLoading, errorMsg, txHash, handleExecute, handleRetry, handleCancel } =
+    useCardExecution({ steps, toolCallId, executionState });
 
-  function handleRetry() {
-    setState("idle");
-    setErrorMsg("");
-    setTxHash(undefined);
-    resetApprove();
-    resetDeposit();
-  }
-
-  const isLoading = state === "approving" || state === "depositing";
-
-  if (state === "cancelled") {
-    return <CancelledState label="Farm Stake" />;
-  }
+  if (status === "cancelled") return <CancelledState label="Farm Stake" />;
 
   return (
     <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
@@ -104,17 +76,17 @@ export function FarmStakeCard({ data, toolCallId, executionState }: { data: Prep
 
       <ActionArea
         isConnected={isConnected}
-        state={state}
+        state={status}
         isLoading={isLoading}
         txHash={txHash}
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
+        onCancel={handleCancel}
         walletMessage="Connect your wallet to stake"
         successMessage="LP tokens staked!"
         buttonLabel={data.needsApproval ? "Approve & Stake" : "Stake LP"}
-        loadingLabel={state === "approving" ? "Approving LP..." : "Depositing..."}
+        loadingLabel={currentStepLabel}
       />
     </div>
   );

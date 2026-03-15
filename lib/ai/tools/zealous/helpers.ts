@@ -1,6 +1,6 @@
 import { CONTRACTS } from "@/config/contracts";
 import { routerAbi } from "@/config/abis";
-import { client, calculatePriceImpactForFactory } from "../shared/helpers";
+import { findBestPathForRouter, calculatePriceImpactForFactory } from "../shared/helpers";
 
 export async function findBestPath(
   addressIn: `0x${string}`,
@@ -8,32 +8,15 @@ export async function findBestPath(
   rawAmountIn: bigint,
   isDiscountEligible = false
 ): Promise<{ path: `0x${string}`[]; amounts: bigint[] }> {
-  // Try direct path first
-  try {
-    const amounts = (await client.readContract({
-      address: CONTRACTS.ROUTER,
-      abi: routerAbi,
-      functionName: "getAmountsOut",
-      args: [rawAmountIn, [addressIn, addressOut], isDiscountEligible],
-    })) as bigint[];
-    return { path: [addressIn, addressOut], amounts };
-  } catch {
-    // Direct path failed — try routing through WKAS
-  }
-
-  const wkas = CONTRACTS.WKAS;
-  // Skip WKAS hop if either token IS WKAS
-  if (addressIn.toLowerCase() === wkas.toLowerCase() || addressOut.toLowerCase() === wkas.toLowerCase()) {
-    throw new Error("No liquidity path found for this pair");
-  }
-
-  const amounts = (await client.readContract({
-    address: CONTRACTS.ROUTER,
-    abi: routerAbi,
-    functionName: "getAmountsOut",
-    args: [rawAmountIn, [addressIn, wkas, addressOut], isDiscountEligible],
-  })) as bigint[];
-  return { path: [addressIn, wkas, addressOut], amounts };
+  return findBestPathForRouter({
+    router: CONTRACTS.ROUTER,
+    routerAbi,
+    wkas: CONTRACTS.WKAS,
+    addressIn,
+    addressOut,
+    rawAmountIn,
+    extraArgs: [isDiscountEligible],
+  });
 }
 
 export async function calculatePriceImpact(

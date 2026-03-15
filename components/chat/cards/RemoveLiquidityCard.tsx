@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount, useConfig, useWriteContract } from "wagmi";
-import { waitForTransactionReceipt } from "@wagmi/core";
+import { useAccount } from "wagmi";
 import { routerAbi, erc20Abi } from "@/config/abis";
+import { useCardExecution, type ExecutionStep } from "@/hooks/useCardExecution";
 import type { PrepareRemoveLiquidityResult } from "@/lib/ai/tool-types";
 import {
   TokenBadge,
@@ -14,100 +13,72 @@ import {
   CancelledState,
   DetailRow,
 } from "./shared/ExecutionCardParts";
-import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
-
-type RemoveLiquidityState = "idle" | "approving" | "removing" | "success" | "error" | "cancelled";
+import type { ExecutionRecord } from "../ExecutionStateContext";
 
 export function RemoveLiquidityCard({ data, toolCallId, executionState }: { data: PrepareRemoveLiquidityResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { address, isConnected } = useAccount();
-  const config = useConfig();
-  const { markExecuted } = useExecutionState();
-  const [state, setState] = useState<RemoveLiquidityState>((executionState?.state as RemoveLiquidityState) ?? "idle");
-  const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
-  const { writeContractAsync: writeApproveAsync, reset: resetApprove } = useWriteContract();
-  const { writeContractAsync: writeRemoveAsync, reset: resetRemove } = useWriteContract();
+  const steps: ExecutionStep[] = [];
 
-  async function handleExecute() {
-    setErrorMsg("");
-    try {
-      // Approve LP token if needed
-      if (data.needsApproval) {
-        setState("approving");
-        const approveHash = await writeApproveAsync({
+  if (data.needsApproval) {
+    steps.push({
+      label: "Approving LP...",
+      execute: async ({ writeContractAsync }) =>
+        writeContractAsync({
           address: data.tx.pairAddress as `0x${string}`,
           abi: erc20Abi,
           functionName: "approve",
           args: [data.tx.router as `0x${string}`, BigInt(data.tx.rawLpAmount)],
-        });
-        await waitForTransactionReceipt(config, { hash: approveHash });
-      }
+        }),
+    });
+  }
 
-      // Remove liquidity
+  steps.push({
+    label: "Removing...",
+    execute: async ({ writeContractAsync }) => {
       const { tx, liquidityType } = data;
       const deadline = BigInt(tx.deadline);
-      setState("removing");
 
-      let hash: `0x${string}`;
       if (liquidityType === "KAS_TOKEN") {
         const isANative = data.tokenA.toUpperCase() === "KAS";
         const tokenAddr = isANative ? tx.tokenBAddress : tx.tokenAAddress;
         const amountTokenMin = BigInt(isANative ? tx.rawAmountBMin : tx.rawAmountAMin);
         const amountKASMin = BigInt(isANative ? tx.rawAmountAMin : tx.rawAmountBMin);
 
-        hash = await writeRemoveAsync({
+        return writeContractAsync({
           address: tx.router as `0x${string}`,
           abi: routerAbi,
           functionName: "removeLiquidityKAS",
           args: [tokenAddr as `0x${string}`, BigInt(tx.rawLpAmount), amountTokenMin, amountKASMin, address!, deadline],
         });
-      } else {
-        hash = await writeRemoveAsync({
-          address: tx.router as `0x${string}`,
-          abi: routerAbi,
-          functionName: "removeLiquidity",
-          args: [
-            tx.tokenAAddress as `0x${string}`,
-            tx.tokenBAddress as `0x${string}`,
-            BigInt(tx.rawLpAmount),
-            BigInt(tx.rawAmountAMin),
-            BigInt(tx.rawAmountBMin),
-            address!,
-            deadline,
-          ],
-        });
       }
 
-      setTxHash(hash);
-      await waitForTransactionReceipt(config, { hash });
-      setState("success");
-      if (toolCallId) markExecuted(toolCallId, "success", hash);
-    } catch (err) {
-      setState("error");
-      setErrorMsg((err as Error).message.split("\n")[0]);
-    }
-  }
+      return writeContractAsync({
+        address: tx.router as `0x${string}`,
+        abi: routerAbi,
+        functionName: "removeLiquidity",
+        args: [
+          tx.tokenAAddress as `0x${string}`,
+          tx.tokenBAddress as `0x${string}`,
+          BigInt(tx.rawLpAmount),
+          BigInt(tx.rawAmountAMin),
+          BigInt(tx.rawAmountBMin),
+          address!,
+          deadline,
+        ],
+      });
+    },
+  });
 
-  function handleRetry() {
-    setState("idle");
-    setErrorMsg("");
-    setTxHash(undefined);
-    resetApprove();
-    resetRemove();
-  }
+  const { status, currentStepLabel, isLoading, errorMsg, txHash, handleExecute, handleRetry, handleCancel } =
+    useCardExecution({ steps, toolCallId, executionState });
 
-  const isLoading = state === "approving" || state === "removing";
-
-  if (state === "cancelled") {
-    return <CancelledState label="Remove Liquidity" />;
-  }
+  if (status === "cancelled") return <CancelledState label="Remove Liquidity" />;
 
   return (
     <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
       <div className="text-xs text-zinc-500 uppercase tracking-wide mb-3">Remove Liquidity</div>
 
-      {/* What you'll receive */}
       <div className="text-xs text-zinc-500 mb-2">Removing {data.percentage}% of LP ({formatAmount(data.lpAmount)} LP tokens)</div>
       <div className="space-y-1.5">
         <div className="flex items-center gap-2">
@@ -120,7 +91,6 @@ export function RemoveLiquidityCard({ data, toolCallId, executionState }: { data
         </div>
       </div>
 
-      {/* Details */}
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         <DetailRow label="Min Received" value={`${formatAmount(data.amountAMin)} ${data.tokenA}`} />
         <DetailRow label="" value={`${formatAmount(data.amountBMin)} ${data.tokenB}`} />
@@ -140,17 +110,17 @@ export function RemoveLiquidityCard({ data, toolCallId, executionState }: { data
 
       <ActionArea
         isConnected={isConnected}
-        state={state}
+        state={status}
         isLoading={isLoading}
         txHash={txHash}
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
+        onCancel={handleCancel}
         walletMessage="Connect your wallet to remove liquidity"
         successMessage="Liquidity removed!"
         buttonLabel={data.needsApproval ? "Approve & Remove" : "Remove Liquidity"}
-        loadingLabel={state === "approving" ? "Approving LP..." : "Removing..."}
+        loadingLabel={currentStepLabel}
       />
     </div>
   );

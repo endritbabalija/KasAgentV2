@@ -19,6 +19,7 @@ import { SpyPortfolioCard } from "./cards/SpyPortfolioCard";
 import { PriceCard } from "./cards/PriceCard";
 import { KrokoSwapExecutionCard } from "./cards/KrokoSwapExecutionCard";
 import { SwapComparisonCard } from "./cards/SwapComparisonCard";
+import { StrategyPlanCard } from "./cards/StrategyPlanCard";
 import type {
   SwapQuoteResult,
   PrepareSwapResult,
@@ -39,6 +40,7 @@ import type {
   AllPairsResult,
   KrokoPrepareSwapResult,
   SwapComparisonResult,
+  StrategyPlanResult,
 } from "@/lib/ai/tool-types";
 
 import { useExecutionState, type ExecutionRecord } from "./ExecutionStateContext";
@@ -81,6 +83,7 @@ const TOOL_CARD_REGISTRY: Record<string, CardRenderer> = {
 
   // Cross-protocol tools
   compareSwapQuotes: (o) => <SwapComparisonCard data={o as unknown as SwapComparisonResult} />,
+  planStrategy: (o) => <StrategyPlanCard data={o as unknown as StrategyPlanResult} />,
 
   // Protocol-agnostic tools
   getTransactionHistory: (o) => <TransactionHistoryCard data={o as unknown as TransactionHistoryResult} />,

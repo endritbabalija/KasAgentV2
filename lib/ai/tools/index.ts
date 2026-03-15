@@ -5,6 +5,7 @@ import { compareTools } from "./compare";
 import { historyTools } from "./history";
 import { spyTools } from "./spy";
 import { oracleTools } from "./oracle";
+import { strategyTools } from "./strategy";
 
 export const aiTools = {
   ...zealousTools,
@@ -14,4 +15,5 @@ export const aiTools = {
   ...historyTools,
   ...spyTools,
   ...oracleTools,
+  ...strategyTools,
 };

@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount, useConfig, useWriteContract } from "wagmi";
-import { waitForTransactionReceipt } from "@wagmi/core";
+import { useAccount } from "wagmi";
 import { masterchefAbi } from "@/config/abis";
+import { useCardExecution, type ExecutionStep } from "@/hooks/useCardExecution";
 import type { PrepareFarmUnstakeResult } from "@/lib/ai/tool-types";
 import {
   formatAmount,
@@ -13,53 +12,28 @@ import {
   CancelledState,
   DetailRow,
 } from "./shared/ExecutionCardParts";
-import { useExecutionState, type ExecutionRecord } from "../ExecutionStateContext";
-
-type FarmUnstakeState = "idle" | "withdrawing" | "success" | "error" | "cancelled";
+import type { ExecutionRecord } from "../ExecutionStateContext";
 
 export function FarmUnstakeCard({ data, toolCallId, executionState }: { data: PrepareFarmUnstakeResult; toolCallId?: string; executionState?: ExecutionRecord }) {
   const { isConnected } = useAccount();
-  const config = useConfig();
-  const { markExecuted } = useExecutionState();
-  const [state, setState] = useState<FarmUnstakeState>((executionState?.state as FarmUnstakeState) ?? "idle");
-  const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string | undefined>(executionState?.txHash);
 
-  const { writeContractAsync: writeWithdrawAsync, reset: resetWithdraw } = useWriteContract();
+  const steps: ExecutionStep[] = [
+    {
+      label: "Withdrawing...",
+      execute: async ({ writeContractAsync }) =>
+        writeContractAsync({
+          address: data.tx.masterChef as `0x${string}`,
+          abi: masterchefAbi,
+          functionName: "withdraw",
+          args: [BigInt(data.tx.pid), BigInt(data.tx.rawAmount)],
+        }),
+    },
+  ];
 
-  async function handleExecute() {
-    setErrorMsg("");
-    try {
-      setState("withdrawing");
-      const hash = await writeWithdrawAsync({
-        address: data.tx.masterChef as `0x${string}`,
-        abi: masterchefAbi,
-        functionName: "withdraw",
-        args: [BigInt(data.tx.pid), BigInt(data.tx.rawAmount)],
-      });
+  const { status, currentStepLabel, isLoading, errorMsg, txHash, handleExecute, handleRetry, handleCancel } =
+    useCardExecution({ steps, toolCallId, executionState });
 
-      setTxHash(hash);
-      await waitForTransactionReceipt(config, { hash });
-      setState("success");
-      if (toolCallId) markExecuted(toolCallId, "success", hash);
-    } catch (err) {
-      setState("error");
-      setErrorMsg((err as Error).message.split("\n")[0]);
-    }
-  }
-
-  function handleRetry() {
-    setState("idle");
-    setErrorMsg("");
-    setTxHash(undefined);
-    resetWithdraw();
-  }
-
-  const isLoading = state === "withdrawing";
-
-  if (state === "cancelled") {
-    return <CancelledState label="Farm Unstake" />;
-  }
+  if (status === "cancelled") return <CancelledState label="Farm Unstake" />;
 
   return (
     <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
@@ -87,17 +61,17 @@ export function FarmUnstakeCard({ data, toolCallId, executionState }: { data: Pr
 
       <ActionArea
         isConnected={isConnected}
-        state={state}
+        state={status}
         isLoading={isLoading}
         txHash={txHash}
         errorMsg={errorMsg}
         onExecute={handleExecute}
         onRetry={handleRetry}
-        onCancel={() => { setState("cancelled"); if (toolCallId) markExecuted(toolCallId, "cancelled"); }}
+        onCancel={handleCancel}
         walletMessage="Connect your wallet to unstake"
         successMessage="LP tokens unstaked! Rewards claimed."
         buttonLabel="Unstake LP"
-        loadingLabel="Withdrawing..."
+        loadingLabel={currentStepLabel}
       />
     </div>
   );
