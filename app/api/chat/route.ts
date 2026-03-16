@@ -13,24 +13,14 @@ import type {
 } from "@/lib/ai/serializers";
 import "@/lib/env"; // validate env vars at startup
 import { supabase } from "@/lib/supabase";
-import { ETH_ADDRESS_RE } from "@/lib/validation";
-
-/* ------------------------------------------------------------------ */
-/*  Route handler                                                      */
-/* ------------------------------------------------------------------ */
+import { requireAuth } from "@/lib/auth-middleware";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-
-    // 1A — Wallet-based request validation
-    const walletAddress: string | undefined = body.walletAddress;
-    if (!walletAddress || !ETH_ADDRESS_RE.test(walletAddress)) {
-      return Response.json(
-        { error: "Wallet connection required. Please connect your wallet." },
-        { status: 401 }
-      );
-    }
+    // 1A — Verify wallet via JWT cookie (cryptographic proof of ownership)
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+    const walletAddress = authResult;
 
     // 1B — Rate limiting (Supabase-backed, persists across deploys)
     const { data: rl, error: rlError } = await supabase.rpc("check_rate_limit", {
@@ -38,14 +28,20 @@ export async function POST(req: Request) {
     });
     if (rlError) {
       console.error("[rate-limit] Supabase RPC error:", rlError);
-      // Fail open — don't block users if the rate-limit DB is down
-    } else if (rl && !rl.allowed) {
+      // Fail closed — block request if rate limit check is unavailable
+      return Response.json(
+        { error: "Service temporarily unavailable. Please try again." },
+        { status: 503 }
+      );
+    }
+    if (rl && !rl.allowed) {
       return Response.json(
         { error: `Rate limit exceeded. Try again in ${rl.retry_in_min} minutes.` },
         { status: 429 }
       );
     }
 
+    const body = await req.json();
     const messages: UIMessage[] = body.messages;
     if (!Array.isArray(messages) || messages.length === 0) {
       return Response.json(
@@ -80,7 +76,6 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     console.error("[/api/chat] Unhandled error:", err);
 
-    // Anthropic SDK errors expose a status property
     const isAnthropicError =
       err instanceof Error &&
       (err.constructor.name.includes("Anthropic") ||

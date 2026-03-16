@@ -1,43 +1,25 @@
 "use client";
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { Menu, Plus } from "lucide-react";
-import type { Portfolio } from "@/hooks/usePortfolio";
+import { Menu, Wallet } from "lucide-react";
+import { useAppContext } from "@/components/shell/AppContext";
 import { formatTokenAmount } from "@/lib/format";
 import { NetworkStatus } from "./NetworkStatus";
 
-interface AppHeaderProps {
-  portfolio: Portfolio;
-  onSidebarToggle: () => void;
-  onNewChat: () => void;
-}
+export function AppHeader() {
+  const { portfolio, portfolioPanel, leftRail } = useAppContext();
 
-export function AppHeader({
-  portfolio,
-  onSidebarToggle,
-  onNewChat,
-}: AppHeaderProps) {
-  // Find KAS balance from portfolio
   const kasBalance = portfolio.balances.find((b) => b.symbol === "KAS");
 
   return (
     <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-zinc-800 shrink-0">
-      {/* Sidebar toggle — mobile only (desktop uses sidebar's own controls) */}
+      {/* Left rail toggle — mobile only */}
       <button
-        onClick={onSidebarToggle}
+        onClick={leftRail.toggle}
         className="md:hidden flex items-center justify-center w-10 h-10 min-w-[44px] min-h-[44px] rounded-lg hover:bg-zinc-800 transition-colors"
-        aria-label="Open sidebar"
+        aria-label="Open menu"
       >
         <Menu className="w-5 h-5 text-zinc-400" />
-      </button>
-
-      {/* New chat */}
-      <button
-        onClick={onNewChat}
-        className="flex items-center justify-center w-10 h-10 min-w-[44px] min-h-[44px] rounded-lg hover:bg-zinc-800 transition-colors"
-        aria-label="New chat"
-      >
-        <Plus className="w-5 h-5 text-zinc-400" />
       </button>
 
       {/* Logo */}
@@ -59,7 +41,16 @@ export function AppHeader({
         </div>
       )}
 
-      {/* Wallet connect — compact on mobile */}
+      {/* Portfolio toggle */}
+      <button
+        onClick={portfolioPanel.toggle}
+        className="flex items-center justify-center w-10 h-10 min-w-[44px] min-h-[44px] rounded-lg hover:bg-zinc-800 transition-colors"
+        aria-label="Toggle portfolio"
+      >
+        <Wallet className="w-5 h-5 text-zinc-400" />
+      </button>
+
+      {/* Wallet connect */}
       <ConnectButton
         accountStatus={{ smallScreen: "avatar", largeScreen: "full" }}
         chainStatus={{ smallScreen: "icon", largeScreen: "full" }}

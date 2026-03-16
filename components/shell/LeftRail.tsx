@@ -1,0 +1,116 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { Plus, X } from "lucide-react";
+import { useAppContext } from "./AppContext";
+import { ConversationList } from "@/components/sidebar/ConversationList";
+
+export function LeftRail() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const {
+    conversations,
+    isConversationsLoading,
+    deleteConversation,
+    leftRail,
+  } = useAppContext();
+
+  // Extract active conversation ID from URL
+  const activeConversationId = pathname.startsWith("/c/")
+    ? pathname.split("/c/")[1]
+    : null;
+
+  // Lock body scroll when mobile drawer is open
+  useEffect(() => {
+    if (!leftRail.isOpen) return;
+    const isMobile = window.innerWidth < 768;
+    if (!isMobile) return;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, [leftRail.isOpen]);
+
+  const handleSelectConversation = (id: string) => {
+    router.push(`/c/${id}`);
+    if (window.innerWidth < 768) {
+      leftRail.close();
+    }
+  };
+
+  const handleNewChat = () => {
+    router.push("/");
+    if (window.innerWidth < 768) {
+      leftRail.close();
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    deleteConversation(id);
+    // If deleting the active conversation, go home
+    if (activeConversationId === id) {
+      router.push("/");
+    }
+  };
+
+  const railContent = (
+    <div className="w-64 h-full flex flex-col bg-zinc-950/50">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-3 border-b border-zinc-800">
+        <button
+          onClick={handleNewChat}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          New chat
+        </button>
+        <button
+          onClick={leftRail.close}
+          className="md:hidden p-1 rounded hover:bg-zinc-800 transition-colors"
+          aria-label="Close menu"
+        >
+          <X className="w-5 h-5 text-zinc-400" />
+        </button>
+      </div>
+
+      {/* Conversation list */}
+      <ConversationList
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        onSelect={handleSelectConversation}
+        onDelete={handleDelete}
+        isListLoading={isConversationsLoading}
+      />
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop: always-visible rail */}
+      <aside className="hidden md:block shrink-0 w-64 border-r border-zinc-800 overflow-hidden">
+        {railContent}
+      </aside>
+
+      {/* Mobile: overlay drawer */}
+      <div
+        className={`md:hidden fixed inset-0 z-40 transition-opacity duration-300 ${
+          leftRail.isOpen
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
+        }`}
+      >
+        <div
+          className="absolute inset-0 bg-black/60"
+          onClick={leftRail.close}
+          aria-label="Close menu"
+        />
+        <aside
+          className={`absolute top-0 left-0 h-full w-64 bg-zinc-950 border-r border-zinc-800 transition-transform duration-300 ${
+            leftRail.isOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          {railContent}
+        </aside>
+      </div>
+    </>
+  );
+}

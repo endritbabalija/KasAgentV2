@@ -1,11 +1,14 @@
 "use client";
 
 import type { RiskFlag, RiskLevel, ContractInfo } from "@/lib/ai/tool-types";
-import { shortenAddress } from "@/lib/format";
+import { shortenAddress, formatDisplayAmount } from "@/lib/format";
 import { EXPLORER_URL } from "@/config/chains";
 import { useState } from "react";
 
 export { shortenAddress };
+
+// Re-export as `formatAmount` for backward-compat with cards that import it by name
+export { formatDisplayAmount as formatAmount };
 
 // ── Token Badge ──
 
@@ -27,16 +30,6 @@ export function TokenBadge({ symbol }: { symbol: string }) {
       {symbol.toUpperCase()}
     </span>
   );
-}
-
-// ── Format Amount ──
-
-export function formatAmount(val: string): string {
-  const n = parseFloat(val);
-  if (isNaN(n)) return val;
-  if (n >= 1_000_000) return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  return n.toLocaleString("en-US", { maximumFractionDigits: 8 });
 }
 
 // ── Risk Flags ──

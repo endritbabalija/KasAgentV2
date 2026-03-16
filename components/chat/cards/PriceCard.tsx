@@ -1,14 +1,5 @@
 import type { TokenPriceResult } from "@/lib/ai/tool-types";
-import { shortenAddress } from "./shared/ExecutionCardParts";
-
-function formatPrice(price: string): string {
-  const num = parseFloat(price);
-  if (num === 0) return "0";
-  if (num >= 1) return num.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  // For very small prices, show enough significant digits
-  if (num < 0.000001) return num.toExponential(4);
-  return num.toLocaleString("en-US", { maximumSignificantDigits: 4 });
-}
+import { shortenAddress, formatPrice } from "@/lib/format";
 
 function formatLiquidity(value: string): string {
   if (value === "N/A") return "N/A";

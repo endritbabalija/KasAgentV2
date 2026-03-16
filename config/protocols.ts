@@ -4,15 +4,22 @@ export type ProtocolId = "zealous" | "kroko" | "kaspacom";
 
 export type ProtocolFeature = "swap" | "liquidity" | "farms" | "staking" | "membership";
 
+export type ProtocolType = "dex" | "lending" | "bridge" | "nft" | "launchpad" | "governance" | "l1-tokens";
+
+export type ProtocolLayer = "l1" | "l2" | "cross-layer";
+
 export interface ProtocolConfig {
   id: ProtocolId;
   name: string;
   shortName: string;
+  type: ProtocolType;
+  layer: ProtocolLayer;
   features: ProtocolFeature[];
   contracts: Record<string, `0x${string}`>;
   factoryAddress?: `0x${string}`;
-  factoryType?: "uniswap-v2";
+  factoryType?: "uniswap-v2" | "uniswap-v3" | "custom";
   apiBaseUrl?: string;
+  rpc?: { endpoint: string };
   description: string;
 }
 
@@ -21,6 +28,8 @@ export const PROTOCOLS: Record<ProtocolId, ProtocolConfig> = {
     id: "zealous",
     name: "ZealousSwap",
     shortName: "Zealous",
+    type: "dex",
+    layer: "l2",
     features: ["swap", "liquidity", "farms", "staking", "membership"],
     contracts: {
       router: CONTRACTS.ROUTER,
@@ -42,6 +51,8 @@ export const PROTOCOLS: Record<ProtocolId, ProtocolConfig> = {
     id: "kroko",
     name: "KrokoSwap",
     shortName: "Kroko",
+    type: "dex",
+    layer: "l2",
     features: ["swap"],
     contracts: {
       permit2: "0x2E1987F680FD7Bc8B33d3Bf94f12B988A0B50034" as `0x${string}`,
@@ -62,6 +73,8 @@ export const PROTOCOLS: Record<ProtocolId, ProtocolConfig> = {
     id: "kaspacom",
     name: "KaspaCom",
     shortName: "KaspaCom",
+    type: "dex",
+    layer: "l2",
     features: ["swap"],
     contracts: {
       router: "0x3a1f0bD164fe9D8fa18Da5abAB352dC634CA5F10" as `0x${string}`,
@@ -94,4 +107,19 @@ export function getProtocol(id: ProtocolId): ProtocolConfig {
 /** Filter protocols by feature. */
 export function getProtocolsWithFeature(feature: ProtocolFeature): ProtocolConfig[] {
   return Object.values(PROTOCOLS).filter((p) => p.features.includes(feature));
+}
+
+/** Filter protocols by type (dex, lending, bridge, etc.). */
+export function getProtocolsByType(type: ProtocolType): ProtocolConfig[] {
+  return Object.values(PROTOCOLS).filter((p) => p.type === type);
+}
+
+/** Filter protocols by layer (l1, l2, cross-layer). */
+export function getProtocolsByLayer(layer: ProtocolLayer): ProtocolConfig[] {
+  return Object.values(PROTOCOLS).filter((p) => p.layer === layer);
+}
+
+/** Convenience: get all DEX protocols. */
+export function getDexProtocols(): ProtocolConfig[] {
+  return getProtocolsByType("dex");
 }

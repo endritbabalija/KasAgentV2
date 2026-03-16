@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import type { UIMessage } from "ai";
+import { parseToolPart } from "@/lib/ui/parse-tool-part";
 import { ChatMessage } from "./ChatMessage";
 import { QuickActions } from "./QuickActions";
 import { getQuickActions, type QuickAction } from "@/lib/ai/quick-actions";
@@ -50,15 +51,11 @@ export function MessageList({
 
     const actions: QuickAction[] = [];
     for (const part of lastMsg.parts) {
-      if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
-        const raw = part as unknown as Record<string, unknown>;
-        const toolName =
-          part.type === "dynamic-tool"
-            ? (raw.toolName as string)
-            : part.type.split("-").slice(1).join("-");
-        const output = raw.output as Record<string, unknown> | undefined;
-        if (raw.state === "output-available" && output && !output.error) {
-          actions.push(...getQuickActions(toolName, output));
+      const tp = parseToolPart(part);
+      if (tp && tp.state === "output-available") {
+        const output = tp.output as Record<string, unknown> | undefined;
+        if (output && !output.error) {
+          actions.push(...getQuickActions(tp.toolName, output));
         }
       }
     }

@@ -25,6 +25,7 @@ const serverSchema = z.object({
   EXPLORER_API_URL: z.string().url().default("https://explorer.kasplex.org/node-api/proxy/api/v2"),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().min(1, "NEXT_PUBLIC_SUPABASE_URL is required"),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
+  JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
 });
 
 function getServerEnv() {
@@ -36,6 +37,7 @@ function getServerEnv() {
     EXPLORER_API_URL: process.env.EXPLORER_API_URL,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    JWT_SECRET: process.env.JWT_SECRET,
   });
 }
 

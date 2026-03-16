@@ -1,18 +1,16 @@
 import { supabase } from "@/lib/supabase";
-import { ETH_ADDRESS_RE } from "@/lib/validation";
+import { requireAuth } from "@/lib/auth-middleware";
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const { searchParams } = new URL(req.url);
-    const wallet = searchParams.get("wallet");
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+    const wallet = authResult;
 
-    if (!wallet || !ETH_ADDRESS_RE.test(wallet)) {
-      return Response.json({ error: "Invalid wallet address" }, { status: 400 });
-    }
+    const { id } = await params;
 
     // Fetch conversation (verify ownership)
     const { data: convo, error: convoError } = await supabase
@@ -30,7 +28,7 @@ export async function GET(
       return Response.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    if (convo.wallet_address.toLowerCase() !== wallet.toLowerCase()) {
+    if (convo.wallet_address.toLowerCase() !== wallet) {
       return Response.json({ error: "Unauthorized" }, { status: 403 });
     }
 
@@ -52,7 +50,6 @@ export async function GET(
       return Response.json({ error: "Failed to fetch messages" }, { status: 500 });
     }
 
-    // Build execution state map (keyed by tool_call_id)
     if (execResult.error) {
       console.error("[GET /api/conversations/[id]] execution states error:", execResult.error);
     }
@@ -88,15 +85,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+    const wallet = authResult;
+
     const { id } = await params;
-    const { searchParams } = new URL(req.url);
-    const wallet = searchParams.get("wallet");
 
-    if (!wallet || !ETH_ADDRESS_RE.test(wallet)) {
-      return Response.json({ error: "Invalid wallet address" }, { status: 400 });
-    }
-
-    // Verify ownership before deleting
+    // Verify ownership
     const { data: convo, error: convoError } = await supabase
       .from("conversations")
       .select("wallet_address")
@@ -112,11 +107,10 @@ export async function DELETE(
       return Response.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    if (convo.wallet_address.toLowerCase() !== wallet.toLowerCase()) {
+    if (convo.wallet_address.toLowerCase() !== wallet) {
       return Response.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    // CASCADE will delete messages too
     const { error } = await supabase
       .from("conversations")
       .delete()

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { ETH_ADDRESS_RE } from "@/lib/validation";
+import { requireAuth } from "@/lib/auth-middleware";
 import type { UIMessage } from "ai";
 
 function generateTitle(messages: UIMessage[]): string {
@@ -17,14 +17,13 @@ function generateTitle(messages: UIMessage[]): string {
 
 export async function POST(req: Request) {
   try {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+    const wallet = authResult;
+
     const body = await req.json();
-    const wallet: string | undefined = body.walletAddress;
     const conversationId: string | undefined = body.conversationId;
     const messages: UIMessage[] = body.messages;
-
-    if (!wallet || !ETH_ADDRESS_RE.test(wallet)) {
-      return Response.json({ error: "Invalid wallet address" }, { status: 400 });
-    }
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return Response.json({ error: "No messages" }, { status: 400 });
@@ -37,7 +36,7 @@ export async function POST(req: Request) {
       const title = generateTitle(messages);
       const { data, error } = await supabase
         .from("conversations")
-        .insert({ wallet_address: wallet.toLowerCase(), title })
+        .insert({ wallet_address: wallet, title })
         .select("id")
         .single();
 
@@ -63,7 +62,7 @@ export async function POST(req: Request) {
         return Response.json({ error: "Conversation not found" }, { status: 404 });
       }
 
-      if (convo.wallet_address.toLowerCase() !== wallet.toLowerCase()) {
+      if (convo.wallet_address.toLowerCase() !== wallet) {
         return Response.json({ error: "Unauthorized" }, { status: 403 });
       }
 
@@ -80,7 +79,6 @@ export async function POST(req: Request) {
     }
 
     // Insert-before-delete: capture old IDs, insert new, then delete old.
-    // If insert fails, old messages remain intact (no data loss).
     const { data: existing } = await supabase
       .from("messages")
       .select("id")
@@ -99,7 +97,7 @@ export async function POST(req: Request) {
       return Response.json({ error: "Failed to save messages" }, { status: 500 });
     }
 
-    // Clean up old messages — if this fails, we have duplicates but no data loss
+    // Clean up old messages
     if (oldIds.length > 0) {
       const { error: deleteError } = await supabase
         .from("messages")

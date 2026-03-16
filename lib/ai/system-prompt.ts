@@ -1,6 +1,6 @@
 import type { SystemModelMessage } from "ai";
 import type { SerializedPortfolio, SerializedInfinityPool } from "./serializers";
-import { PROTOCOLS } from "@/config/protocols";
+import { PROTOCOLS, type ProtocolType } from "@/config/protocols";
 import { getAllTokens } from "@/lib/token-registry";
 import { checkDiscountEligibility, type DiscountStatus } from "@/lib/discount";
 
@@ -47,13 +47,34 @@ async function buildProtocolKnowledge(): Promise<string> {
     (t) => `- **${t.symbol}** (${t.name}): ${t.address ?? "native"}, ${t.decimals} decimals`
   ).join("\n");
 
-  // Build protocol sections from registry
-  const protocolSections = Object.values(PROTOCOLS).map((p) => {
-    const contracts = Object.entries(p.contracts)
-      .map(([key, addr]) => `- **${key}**: ${addr}`)
-      .join("\n");
-    return `### ${p.name} Contracts\n${contracts}\n\n### ${p.name} Features\n${p.description}`;
-  }).join("\n\n");
+  // Build protocol sections grouped by type
+  const typeLabels: Record<ProtocolType, string> = {
+    dex: "DEX Protocols",
+    lending: "Lending Protocols",
+    bridge: "Bridge Protocols",
+    nft: "NFT Protocols",
+    launchpad: "Launchpad Protocols",
+    governance: "Governance Protocols",
+    "l1-tokens": "L1 Token Protocols",
+  };
+  const byType = new Map<ProtocolType, typeof PROTOCOLS[keyof typeof PROTOCOLS][]>();
+  for (const p of Object.values(PROTOCOLS)) {
+    const arr = byType.get(p.type) ?? [];
+    arr.push(p);
+    byType.set(p.type, arr);
+  }
+  const protocolSections = Array.from(byType.entries())
+    .map(([type, protocols]) => {
+      const header = `## ${typeLabels[type] ?? type}`;
+      const sections = protocols.map((p) => {
+        const contracts = Object.entries(p.contracts)
+          .map(([key, addr]) => `- **${key}**: ${addr}`)
+          .join("\n");
+        return `### ${p.name} (${p.layer.toUpperCase()})\n${contracts}\n\n${p.description}`;
+      }).join("\n\n");
+      return `${header}\n\n${sections}`;
+    })
+    .join("\n\n");
 
   return `
 ## Kasplex L2 Protocol Knowledge

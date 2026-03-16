@@ -1,19 +1,16 @@
 import { supabase } from "@/lib/supabase";
-import { ETH_ADDRESS_RE } from "@/lib/validation";
+import { requireAuth } from "@/lib/auth-middleware";
 
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const wallet = searchParams.get("wallet");
-
-    if (!wallet || !ETH_ADDRESS_RE.test(wallet)) {
-      return Response.json({ error: "Invalid wallet address" }, { status: 400 });
-    }
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+    const wallet = authResult;
 
     const { data, error } = await supabase
       .from("conversations")
       .select("id, title, updated_at")
-      .eq("wallet_address", wallet.toLowerCase())
+      .eq("wallet_address", wallet)
       .order("updated_at", { ascending: false });
 
     if (error) {

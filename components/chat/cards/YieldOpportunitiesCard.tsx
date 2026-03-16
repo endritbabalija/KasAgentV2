@@ -1,11 +1,5 @@
 import type { YieldOpportunitiesResult, YieldOpportunity, RiskLevel } from "@/lib/ai/tool-types";
-
-function formatKas(n: number): string {
-  if (n >= 1_000_000) return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  if (n >= 1_000) return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  return n.toLocaleString("en-US", { maximumFractionDigits: 8 });
-}
+import { formatKasAmount as formatKas } from "@/lib/format";
 
 function formatApy(apy: number | null): string {
   if (apy === null) return "Fee-based";

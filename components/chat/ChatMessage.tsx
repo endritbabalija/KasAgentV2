@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import type { UIMessage } from "ai";
+import { parseToolPart } from "@/lib/ui/parse-tool-part";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { AnimatedMarkdown } from "./AnimatedMarkdown";
 import { ToolPartRenderer } from "./ToolPartRenderer";
@@ -65,27 +66,18 @@ export const ChatMessage = memo(
     for (const part of message.parts) {
       if (part.type === "text") {
         textBuffer += part.text;
-      } else if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
-        flushText(false);
-        const raw = part as unknown as Record<string, unknown>;
-        const toolName =
-          part.type === "dynamic-tool"
-            ? (raw.toolName as string)
-            : part.type.split("-").slice(1).join("-");
-        const toolPart = {
-          toolName,
-          state: raw.state as string,
-          output: raw.output as unknown,
-          errorText: raw.errorText as string | undefined,
-          toolCallId: raw.toolCallId as string,
-        };
-        elements.push(
-          <div key={toolPart.toolCallId} className="flex justify-start">
-            <div className="max-w-[95%] sm:max-w-[85%] w-full">
-              <ToolPartRenderer part={toolPart} />
+      } else {
+        const tp = parseToolPart(part);
+        if (tp) {
+          flushText(false);
+          elements.push(
+            <div key={tp.toolCallId} className="flex justify-start">
+              <div className="max-w-[95%] sm:max-w-[85%] w-full">
+                <ToolPartRenderer part={tp} />
+              </div>
             </div>
-          </div>
-        );
+          );
+        }
       }
     }
 

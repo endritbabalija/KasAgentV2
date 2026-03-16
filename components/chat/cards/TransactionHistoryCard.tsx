@@ -1,5 +1,5 @@
 import type { TransactionHistoryResult, TransactionHistoryItem } from "@/lib/ai/tool-types";
-import { shortenAddress } from "./shared/ExecutionCardParts";
+import { shortenAddress, formatDisplayAmount } from "@/lib/format";
 import { EXPLORER_URL } from "@/config/chains";
 
 function timeAgo(timestamp: string): string {
@@ -25,9 +25,7 @@ function formatFee(val: string): string {
 function formatAmount(val: string): string {
   const n = parseFloat(val);
   if (isNaN(n) || n === 0) return "";
-  if (n >= 1_000_000) return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  if (n >= 1) return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  return n.toLocaleString("en-US", { maximumFractionDigits: 8 });
+  return formatDisplayAmount(val);
 }
 
 const actionBadgeColors: Record<string, string> = {

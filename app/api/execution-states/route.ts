@@ -1,18 +1,17 @@
 import { supabase } from "@/lib/supabase";
-import { ETH_ADDRESS_RE } from "@/lib/validation";
+import { requireAuth } from "@/lib/auth-middleware";
 
 export async function POST(req: Request) {
   try {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+    const wallet = authResult;
+
     const body = await req.json();
-    const wallet: string | undefined = body.walletAddress;
     const conversationId: string | undefined = body.conversationId;
     const toolCallId: string | undefined = body.toolCallId;
     const state: string | undefined = body.state;
     const txHash: string | undefined = body.txHash;
-
-    if (!wallet || !ETH_ADDRESS_RE.test(wallet)) {
-      return Response.json({ error: "Invalid wallet address" }, { status: 400 });
-    }
 
     if (!conversationId || !toolCallId || !state) {
       return Response.json({ error: "Missing required fields" }, { status: 400 });
@@ -33,7 +32,7 @@ export async function POST(req: Request) {
       return Response.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    if (convo.wallet_address.toLowerCase() !== wallet.toLowerCase()) {
+    if (convo.wallet_address.toLowerCase() !== wallet) {
       return Response.json({ error: "Unauthorized" }, { status: 403 });
     }
 
