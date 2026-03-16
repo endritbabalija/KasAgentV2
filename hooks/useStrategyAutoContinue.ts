@@ -34,6 +34,12 @@ export function useStrategyAutoContinue({
 
   // When portfolio finishes refetching after a successful step, send continuation
   useEffect(() => {
+    // Clear any existing timer from a previous run of this effect
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
     if (!pendingContinueRef.current) return;
 
     if (portfolioIsFetching) {
@@ -78,14 +84,14 @@ export function useStrategyAutoContinue({
         text: `Step ${completed} completed${txHash ? ` (tx: ${txHash})` : ""}. Continue with step ${completed + 1}: ${nextStep.action}. Use my updated wallet balances.`,
       });
     }, 1500);
-  }, [portfolioIsFetching, messagesRef, sendMessageRef, statusRef, executionStatesRef]);
 
-  // Cleanup on unmount
-  useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
     };
-  }, []);
+  }, [portfolioIsFetching, messagesRef, sendMessageRef, statusRef, executionStatesRef]);
 
   const onExecutionSuccess = useCallback(
     (toolCallId: string, txHash?: string) => {

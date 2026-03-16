@@ -39,7 +39,8 @@
       "mcp__plugin_supabase_supabase__search_docs",
       "Bash(npm list:*)",
       "Bash(find:*)",
-      "mcp__plugin_supabase_supabase__get_advisors"
+      "mcp__plugin_supabase_supabase__get_advisors",
+      "Bash(grep:*)"
     ]
   }
 }

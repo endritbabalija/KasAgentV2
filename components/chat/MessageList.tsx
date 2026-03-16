@@ -44,7 +44,7 @@ export function MessageList({
 
   // Extract quick actions from the last assistant message's tool parts
   const quickActions = useMemo<QuickAction[]>(() => {
-    if (isWaiting || messages.length === 0) return [];
+    if (isWaiting || isStreaming || messages.length === 0) return [];
 
     const lastMsg = messages[messages.length - 1];
     if (lastMsg.role !== "assistant") return [];
@@ -60,7 +60,7 @@ export function MessageList({
       }
     }
     return actions;
-  }, [messages, isWaiting]);
+  }, [messages, isWaiting, isStreaming]);
 
   return (
     <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overflow-x-hidden pt-6 pb-2">
@@ -71,7 +71,7 @@ export function MessageList({
           i === messages.length - 1;
         return (
           <ChatMessage
-            key={message.id}
+            key={`${message.id}-${i}`}
             message={message}
             isLastAssistant={isLastAssistant}
             isStreaming={isStreaming}

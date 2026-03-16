@@ -78,12 +78,17 @@ export async function POST(req: Request) {
       }
     }
 
-    // Insert-before-delete: capture old IDs, insert new, then delete old.
-    const { data: existing } = await supabase
+    // Delete-then-insert: remove all old messages, then insert new ones.
+    // This is idempotent — concurrent saves result in "last writer wins"
+    // instead of producing duplicate messages.
+    const { error: deleteError } = await supabase
       .from("messages")
-      .select("id")
+      .delete()
       .eq("conversation_id", convoId);
-    const oldIds = existing?.map((m: { id: string }) => m.id) ?? [];
+    if (deleteError) {
+      console.error("[POST /api/conversations/save] delete error:", deleteError);
+      return Response.json({ error: "Failed to update messages" }, { status: 500 });
+    }
 
     const rows = messages.map((m) => ({
       conversation_id: convoId,
@@ -95,17 +100,6 @@ export async function POST(req: Request) {
     if (insertError) {
       console.error("[POST /api/conversations/save] insert error:", insertError);
       return Response.json({ error: "Failed to save messages" }, { status: 500 });
-    }
-
-    // Clean up old messages
-    if (oldIds.length > 0) {
-      const { error: deleteError } = await supabase
-        .from("messages")
-        .delete()
-        .in("id", oldIds);
-      if (deleteError) {
-        console.error("[POST /api/conversations/save] old message cleanup error:", deleteError);
-      }
     }
 
     return Response.json({ conversationId: convoId });

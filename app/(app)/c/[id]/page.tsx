@@ -36,7 +36,7 @@ export default function ConversationPage() {
         setSaveError("Failed to save conversation. Your messages may not persist.");
       }
     },
-    [portfolio.address, id]
+    [id]
   );
 
   if (isLoading) {

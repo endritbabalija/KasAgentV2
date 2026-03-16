@@ -22,7 +22,7 @@ export function useExecutionPersistence({
   useEffect(() => {
     conversationIdRef.current = activeConversationId;
     onSuccessRef.current = onSuccess;
-  });
+  }, [activeConversationId, onSuccess]);
 
   const markExecuted = useCallback(
     (toolCallId: string, state: string, txHash?: string) => {

@@ -36,15 +36,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         setConversations(await res.json());
       } else if (res.status === 401) {
-        // Session expired — trigger re-sign
         setConversations([]);
+        walletAuth.signIn();
       }
     } catch (err) {
       console.error("[AppShell] Failed to refresh conversations:", err);
     } finally {
       setIsConversationsLoading(false);
     }
-  }, [walletAuth.isAuthenticated]);
+  }, [walletAuth.isAuthenticated, walletAuth.signIn]);
 
   // Fetch conversations when auth state changes
   useEffect(() => {

@@ -19,13 +19,17 @@ export function parseToolPart(
 ): ParsedToolPart | null {
   if (!isToolPart(part)) return null;
   const raw = part as unknown as Record<string, unknown>;
+  const toolCallId = raw.toolCallId;
+  const state = raw.state;
+  // Bail if required fields are missing (e.g. incomplete streaming frame)
+  if (typeof toolCallId !== "string" || typeof state !== "string") return null;
   return {
     toolName:
       part.type === "dynamic-tool"
-        ? (raw.toolName as string)
+        ? (raw.toolName as string) ?? "unknown"
         : part.type.split("-").slice(1).join("-"),
-    toolCallId: raw.toolCallId as string,
-    state: raw.state as string,
+    toolCallId,
+    state,
     output: raw.output,
     errorText: raw.errorText as string | undefined,
   };

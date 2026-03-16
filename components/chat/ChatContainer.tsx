@@ -95,10 +95,12 @@ export function ChatContainer({
   const sendMessageRef = useRef<(opts: { text: string }) => void>(null!);
   const statusRef = useRef<string>("ready");
   const executionStatesRef = useRef<Record<string, ExecutionRecord>>(initialExecutionStates);
+  // Guard: set to true once onFinish/onError saves, so beforeunload beacon is skipped
+  const savedByFinishRef = useRef(false);
 
   useEffect(() => {
     onSavedRef.current = onConversationSaved;
-  });
+  }, [onConversationSaved]);
 
   // Strategy auto-continue
   const { onExecutionSuccess } = useStrategyAutoContinue({
@@ -121,10 +123,12 @@ export function ChatContainer({
     transport,
     messages: initialMessages,
     onFinish: ({ messages: allMessages }) => {
+      savedByFinishRef.current = true;
       onConversationSaved(allMessages);
     },
     onError: () => {
       if (messagesRef.current.length > 0) {
+        savedByFinishRef.current = true;
         onSavedRef.current(messagesRef.current);
       }
     },
@@ -140,7 +144,11 @@ export function ChatContainer({
     sendMessageRef.current = sendMessage;
     statusRef.current = status;
     executionStatesRef.current = executionStates;
-  });
+    // Reset save guard when a new request starts, so beforeunload works for new messages
+    if (status === "submitted") {
+      savedByFinishRef.current = false;
+    }
+  }, [sendMessage, status, executionStates]);
 
   // Auto-send initialInput on mount (used by feed card actions)
   const initialInputSentRef = useRef(false);
@@ -151,9 +159,10 @@ export function ChatContainer({
     }
   }, [initialInput, sendMessage]);
 
-  // Save on tab close / navigation
+  // Save on tab close / navigation (skip if onFinish/onError already saved)
   useEffect(() => {
     const handleBeforeUnload = () => {
+      if (savedByFinishRef.current) return;
       if (messagesRef.current.length > 0 && portfolio.address) {
         // Auth comes from httpOnly cookie (auto-sent with sendBeacon)
         const payload = JSON.stringify({
@@ -185,7 +194,7 @@ export function ChatContainer({
         : null,
       serializeInfinityPools(pools)
     );
-  });
+  }, [portfolio.isConnected, portfolio.address, portfolio.balances, portfolio.lpPositions, portfolio.farmPositions, portfolio.farmGlobals, portfolio.stakingPositions, pools, bodyStore, getTokenSymbol, getTokenDecimals]);
 
   const isLoading = status === "submitted" || status === "streaming";
   const isWaiting = status === "submitted";

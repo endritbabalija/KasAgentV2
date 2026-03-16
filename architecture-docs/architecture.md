@@ -1,6 +1,6 @@
 # KasAgent Architecture
 
-> Last updated: 2026-03-15
+> Last updated: 2026-03-16
 > Codebase: Next.js 16 + React 19 + wagmi 2 + viem 2 + AI SDK (Anthropic Claude)
 
 KasAgent is a non-custodial AI DeFi copilot for Kasplex L2. Users chat with an AI agent that reads on-chain data, compares DEXes, and prepares transactions — the user signs everything in their own wallet.
@@ -10,27 +10,83 @@ KasAgent is a non-custodial AI DeFi copilot for Kasplex L2. Users chat with an A
 ## High-Level Architecture
 
 ```
-User <-> Chat UI <-> /api/chat <-> Claude (Anthropic)
-                                      |
-                                  AI Tools (23)
-                                      |
-                     +--------+-------+-------+--------+
-                     |        |       |       |        |
-                ZealousSwap KrokoSwap KaspaCom Strategy Shared
-                (on-chain)  (REST API)(on-chain)        (oracle, history,
-                                                         spy, compare)
-                     |        |       |                |
-                     Kasplex L2 EVM (Chain ID: 202555)
+User <-> App Shell (Feed + Canvas) <-> /api/chat <-> Claude (Anthropic)
+              |                                          |
+         Auth (SIWE)                               AI Tools (23)
+              |                                          |
+         /api/auth/*                  +--------+---------+---------+
+              |                       |        |         |         |
+         JWT Cookie            ZealousSwap KrokoSwap KaspaCom  Shared
+              |                (on-chain)  (REST API) (on-chain)  (oracle, history,
+         Supabase (RLS)                                            spy, compare,
+                                                                   strategy)
+                                      |        |         |       |
+                                      Kasplex L2 EVM (Chain ID: 202555)
 ```
 
 **Data flow:**
-1. User sends a message via the chat UI
-2. Frontend passes message + serialized portfolio + wallet address to `/api/chat`
-3. Server builds a 3-block system prompt (identity, protocol knowledge, wallet context)
-4. Claude processes the message and calls tools as needed
-5. Tool results stream back as structured data
-6. `ToolPartRenderer` maps each tool result to a card component
-7. Execution cards let the user approve and sign transactions via wagmi/RainbowKit
+1. User connects wallet → signs SIWE message → server verifies → sets JWT cookie
+2. User sends a message via the chat UI
+3. Frontend passes message + serialized portfolio to `/api/chat` (wallet from cookie)
+4. Server builds a 3-block system prompt (identity, protocol knowledge, wallet context)
+5. Claude processes the message and calls tools as needed
+6. Tool results stream back as structured data
+7. `ToolPartRenderer` maps each tool result to a card component (via `tool-card-registry`)
+8. Execution cards let the user approve and sign transactions via wagmi/RainbowKit
+
+---
+
+## App Shell & Routing
+
+### Layout Structure
+
+```
+┌──────────────────────────────────────────┐
+│  AppHeader (logo, portfolio btn, wallet) │
+├──────────┬───────────────────────────────┤
+│ LeftRail │  {page content}               │
+│ (w-64)   │  / = Feed + new chat          │
+│ convos   │  /c/[id] = conversation       │
+│          │                               │
+├──────────┴───────────────────────────────┤
+│     PortfolioSlideOut (right, overlay)   │
+└──────────────────────────────────────────┘
+```
+
+### Route Structure
+
+```
+app/
+  layout.tsx                    # Root layout (Providers: wagmi, RainbowKit, TanStack)
+  providers.tsx                 # Provider wrappers
+  (app)/
+    layout.tsx                  # AppShell (portfolio, pools, auth, conversations)
+    page.tsx                    # Feed insights + new chat
+    c/[id]/
+      page.tsx                  # Existing conversation
+  api/
+    auth/
+      nonce/route.ts            # POST — generate SIWE nonce
+      verify/route.ts           # POST — verify signature, set JWT cookie
+      signout/route.ts          # POST — clear cookie
+    chat/route.ts               # POST — AI chat streaming
+    conversations/              # Conversation CRUD
+    execution-states/           # Transaction state persistence
+    feed/route.ts               # POST — feed insights (Supabase-cached)
+```
+
+**URLs:** `/` = feed + new chat, `/c/abc123` = conversation
+
+### Key Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `AppShell` | `components/shell/AppShell.tsx` | Layout controller: portfolio, pools, auth, conversations, panel state |
+| `AppContext` | `components/shell/AppContext.tsx` | Shared context — no prop drilling through routes |
+| `LeftRail` | `components/shell/LeftRail.tsx` | Conversation list, new chat button. Desktop: always visible. Mobile: overlay drawer |
+| `PortfolioSlideOut` | `components/shell/PortfolioSlideOut.tsx` | Right-side portfolio panel, triggered by header button |
+| `PortfolioPanel` | `components/sidebar/PortfolioPanel.tsx` | Portfolio display: balances, LPs, farms, staking, pool rates |
+| `AppHeader` | `components/header/AppHeader.tsx` | Uses AppContext. Logo, portfolio toggle, wallet connect |
 
 ---
 
@@ -39,45 +95,48 @@ User <-> Chat UI <-> /api/chat <-> Claude (Anthropic)
 ```
 KasAgentV2/
 ├── app/                          # Next.js App Router
-│   ├── page.tsx                  # Root page — chat UI
 │   ├── layout.tsx                # Root layout with <Providers>
 │   ├── providers.tsx             # Wagmi + RainbowKit + TanStack Query
+│   ├── (app)/
+│   │   ├── layout.tsx            # AppShell wrapper
+│   │   ├── page.tsx              # Feed + new conversation
+│   │   └── c/[id]/page.tsx       # Existing conversation
 │   └── api/
+│       ├── auth/                 # SIWE auth (nonce, verify, signout)
 │       ├── chat/route.ts         # POST — AI chat streaming endpoint
 │       ├── conversations/        # Conversation CRUD (Supabase-backed)
-│       └── execution-states/     # Transaction state persistence
+│       ├── execution-states/     # Transaction state persistence
+│       └── feed/route.ts         # POST — feed insights
 │
 ├── components/
+│   ├── shell/                    # App shell (layout, context, panels)
+│   │   ├── AppShell.tsx
+│   │   ├── AppContext.tsx
+│   │   ├── LeftRail.tsx
+│   │   └── PortfolioSlideOut.tsx
 │   ├── chat/
-│   │   ├── ChatContainer.tsx     # useChat hook, message state, strategy auto-continue
+│   │   ├── ChatContainer.tsx     # useChat hook, message state, ~200 lines
 │   │   ├── ChatInput.tsx         # User input
 │   │   ├── ChatMessage.tsx       # Renders text + tool parts
 │   │   ├── MessageList.tsx       # Scroll container + quick actions
-│   │   ├── ToolPartRenderer.tsx  # Registry-based tool → card dispatch
+│   │   ├── ToolPartRenderer.tsx  # Imports registry, wraps cards in error boundary
+│   │   ├── CardErrorBoundary.tsx # Per-card error boundary
 │   │   ├── ExecutionStateContext.tsx  # Tracks tx execution across cards
 │   │   └── cards/                # 23 card components
 │   │       ├── shared/ExecutionCardParts.tsx  # Reusable UI primitives
-│   │       ├── SwapQuoteCard.tsx              # Quote display (all DEXes)
-│   │       ├── SwapExecutionCard.tsx          # ZealousSwap/KaspaCom swap execution
-│   │       ├── KrokoSwapExecutionCard.tsx     # KrokoSwap Permit2 execution
-│   │       ├── SwapComparisonCard.tsx         # Cross-DEX comparison
-│   │       ├── StrategyPlanCard.tsx           # Multi-step strategy visualization
-│   │       ├── AddLiquidityCard.tsx           # Add LP
-│   │       ├── RemoveLiquidityCard.tsx        # Remove LP
-│   │       ├── FarmStakeCard.tsx / FarmUnstakeCard.tsx
-│   │       ├── InfinityStakeCard.tsx / InfinityUnstakeCard.tsx
-│   │       ├── AllPairsCard.tsx               # Paginated pair listing
-│   │       ├── YieldOpportunitiesCard.tsx     # Ranked yield table
-│   │       ├── TransactionHistoryCard.tsx
-│   │       ├── SpyPortfolioCard.tsx           # Read-only wallet viewer
-│   │       ├── MembershipStatusCard.tsx
-│   │       └── PriceCard.tsx
+│   │       └── ... (SwapQuoteCard, SwapExecutionCard, StrategyPlanCard, etc.)
+│   ├── feed/
+│   │   ├── FeedCard.tsx          # Single insight card
+│   │   └── FeedContainer.tsx     # Feed container with loading skeleton
 │   ├── header/AppHeader.tsx
-│   └── sidebar/PortfolioSidebar.tsx
+│   ├── sidebar/
+│   │   ├── PortfolioPanel.tsx    # Portfolio display sections
+│   │   └── ConversationList.tsx  # Grouped conversation list
+│   └── ErrorBoundary.tsx         # Generic error boundary
 │
 ├── config/
 │   ├── contracts.ts              # ZealousSwap contract addresses
-│   ├── protocols.ts              # Protocol registry (zealous + kroko + kaspacom)
+│   ├── protocols.ts              # Protocol registry (type, layer, features)
 │   ├── pools.ts                  # InfinityPool address config
 │   ├── chains.ts                 # Kasplex L2 chain definition
 │   ├── wagmi.ts                  # Wagmi + RainbowKit config
@@ -85,8 +144,13 @@ KasAgentV2/
 │   └── abis/                     # 12 ABI files (parseAbi pattern)
 │
 ├── hooks/                        # Client-side React hooks
+│   ├── useWalletAuth.ts          # SIWE sign-in flow, auto-sign on connect
 │   ├── usePortfolio.ts           # Aggregates all position hooks
 │   ├── useCardExecution.ts       # Shared tx execution lifecycle for all cards
+│   ├── useExecutionPersistence.ts # Execution state management + DB persistence
+│   ├── useStrategyAutoContinue.ts # Auto-continue after successful strategy steps
+│   ├── useConversationLoader.ts  # Load single conversation by ID
+│   ├── useFeedInsights.ts        # Client-side feed insight fetching
 │   ├── useAllPairs.ts            # Multi-factory pair discovery
 │   ├── useTokenRegistry.ts       # Client-side token list
 │   ├── useTokenBalances.ts       # ERC-20 + native KAS
@@ -95,79 +159,145 @@ KasAgentV2/
 │   ├── useStakingPositions.ts    # InfinityPool xToken balances
 │   ├── useActiveFarms.ts         # Farm pool metadata
 │   ├── useInfinityPoolData.ts    # Pool exchange rates
-│   └── useConversations.ts       # Supabase conversation CRUD
+│   └── useConversations.ts       # ConversationSummary type definition
 │
 ├── lib/
+│   ├── auth.ts                   # JWT sign/verify, SIWE verification, nonce generation
+│   ├── auth-middleware.ts        # requireAuth() — reads JWT cookie, returns wallet
 │   ├── viem-client.ts            # Single PublicClient instance
 │   ├── token-registry.ts         # Server-side token discovery (5-min cache)
 │   ├── kroko-api.ts              # KrokoSwap REST API client
 │   ├── discount.ts               # Fee discount eligibility checker
 │   ├── multicall.ts              # mcResult() helper
-│   ├── format.ts                 # Token amount formatting
-│   ├── supabase.ts               # Supabase client (server-only)
-│   ├── env.ts                    # Zod-validated env vars
+│   ├── format.ts                 # Formatting: tokens, prices, amounts, relative time
+│   ├── supabase.ts               # Supabase client (server-only, service role)
+│   ├── validation.ts             # ETH_ADDRESS_RE regex
+│   ├── env.ts                    # Zod-validated env vars (incl. JWT_SECRET)
+│   ├── ui/
+│   │   ├── parse-tool-part.ts    # Shared parseToolPart() utility
+│   │   ├── strategy-helpers.ts   # findActiveStrategy(), countCompletedStrategySteps()
+│   │   └── tool-card-registry.tsx # TOOL_CARD_REGISTRY — maps tool names to cards
+│   ├── feed/
+│   │   ├── types.ts              # FeedInsight interface
+│   │   └── compute-insights.ts   # Server-side insight computation
 │   └── ai/
-│       ├── system-prompt.ts      # 3-block cached prompt builder
+│       ├── system-prompt.ts      # 3-block cached prompt builder (grouped by protocol type)
 │       ├── tool-types.ts         # TypeScript interfaces for all tool results
 │       ├── serializers.ts        # Portfolio/pools → prompt-ready strings
 │       ├── quick-actions.ts      # Follow-up suggestion buttons
-│       └── tools/
+│       └── tools/                # 23 AI tools organized by protocol
 │           ├── index.ts          # Merges all tool groups → aiTools
-│           ├── helpers.ts        # Backward-compat shim
 │           ├── compare.ts        # compareSwapQuotes (cross-DEX)
 │           ├── oracle.ts         # getTokenPrice (multi-factory)
 │           ├── history.ts        # getTransactionHistory
 │           ├── spy.ts            # spyOnWallet (multi-factory)
 │           ├── strategy.ts       # planStrategy (multi-step DeFi plans)
-│           ├── shared/
-│           │   └── helpers.ts    # Protocol-agnostic utilities
 │           ├── zealous/          # ZealousSwap tools (14 tools)
-│           │   ├── index.ts
-│           │   ├── helpers.ts    # findBestPath, calculatePriceImpact
-│           │   ├── swap.ts       # zealous_getSwapQuote, zealous_prepareSwap
-│           │   ├── liquidity.ts  # zealous_prepareAddLiquidity, zealous_prepareRemoveLiquidity
-│           │   ├── pairs.ts      # zealous_listAllPairs
-│           │   ├── farms.ts      # zealous_getActiveFarms, zealous_prepareFarmStake/Unstake
-│           │   ├── staking.ts    # zealous_getInfinityPoolRates, zealous_prepareInfinityStake/Unstake
-│           │   ├── yield.ts      # zealous_discoverYieldOpportunities
-│           │   └── membership.ts # zealous_getMembershipStatus
 │           ├── kroko/            # KrokoSwap tools (2 tools)
-│           │   ├── index.ts
-│           │   └── swap.ts       # kroko_getSwapQuote, kroko_prepareSwap
 │           └── kaspacom/         # KaspaCom tools (2 tools)
-│               ├── index.ts
-│               ├── helpers.ts    # findBestPath (KaspaCom routing)
-│               └── swap.ts       # kaspacom_getSwapQuote, kaspacom_prepareSwap
 ```
+
+---
+
+## Authentication & Security
+
+### SIWE (Sign-In With Ethereum) Flow
+
+```
+1. User connects wallet via RainbowKit
+2. Client: POST /api/auth/nonce → { nonce } (rate-limited, 10-min expiry)
+3. Client: Wallet signs SIWE message (domain, address, chainId, nonce)
+4. Client: POST /api/auth/verify → { message, signature }
+5. Server: Verify signature + domain + chainId (202555) + nonce (atomic delete)
+6. Server: Sign JWT { wallet: "0x..." } → set httpOnly Secure SameSite=Strict cookie (7-day)
+7. All subsequent API requests: server reads wallet from JWT cookie
+```
+
+### Security Properties
+
+| Property | How |
+|----------|-----|
+| **Wallet ownership proof** | SIWE cryptographic signature — only the wallet holder can sign |
+| **Replay prevention** | Nonce stored in DB, atomically deleted on use |
+| **Domain binding** | Server validates SIWE message domain matches request host |
+| **Chain binding** | Server validates chainId === 202555 (Kasplex L2) |
+| **Session security** | httpOnly + Secure + SameSite=Strict cookie — not accessible from JS |
+| **Data isolation** | Supabase RLS policies on all tables — DB enforces wallet-scoped access |
+| **Rate limiting** | Supabase RPC `check_rate_limit()` — 30 req/15 min per wallet, fails closed |
+
+### API Route Auth Pattern
+
+All protected routes use the same pattern:
+```ts
+const authResult = await requireAuth(req);          // reads JWT from cookie
+if (authResult instanceof Response) return authResult; // 401 if invalid
+const wallet = authResult;                            // verified wallet address
+```
+
+`requireAuth()` reads the cookie header only — never touches the request body.
 
 ---
 
 ## Protocol Registry
 
-`config/protocols.ts` is the central registry. Each protocol declares its ID, name, features, contract addresses, and optional API URL.
+`config/protocols.ts` is the central registry. Each protocol declares its ID, name, type, layer, features, contract addresses, and optional API URL.
 
 ```
 PROTOCOLS = {
-  zealous:  { features: [swap, liquidity, farms, staking, membership], factoryType: "uniswap-v2" }
-  kroko:    { features: [swap, liquidity],                             factoryType: "uniswap-v2", apiBaseUrl: "..." }
-  kaspacom: { features: [swap],                                        factoryType: "uniswap-v2" }
+  zealous:  { type: "dex", layer: "l2", features: [swap, liquidity, farms, staking, membership] }
+  kroko:    { type: "dex", layer: "l2", features: [swap],  apiBaseUrl: "..." }
+  kaspacom: { type: "dex", layer: "l2", features: [swap] }
 }
 ```
 
-**Shared layers read from the registry, not hardcoded addresses:**
-- `token-registry.ts` → `getAllV2Factories()` → discovers tokens from ALL factories
-- `useAllPairs.ts` → `getAllV2Factories()` → fetches pairs from ALL factories
-- `history.ts` → `PROTOCOLS` → labels contract interactions dynamically
-- `system-prompt.ts` → `PROTOCOLS` → generates protocol knowledge blocks
-- `spy.ts` / `oracle.ts` → `getAllV2Factories()` → reads across all factories
+**Types:** `ProtocolType = "dex" | "lending" | "bridge" | "nft" | "launchpad" | "governance" | "l1-tokens"`
+**Layers:** `ProtocolLayer = "l1" | "l2" | "cross-layer"`
+
+**Helper functions:**
+- `getAllV2Factories()` — all V2 factory addresses with protocol IDs
+- `getProtocolsByType(type)` — filter by dex, lending, etc.
+- `getProtocolsByLayer(layer)` — filter by l1, l2, cross-layer
+- `getDexProtocols()` — convenience for all DEX protocols
+- `getProtocolsWithFeature(feature)` — filter by swap, farms, etc.
+
+**Shared layers read from the registry:**
+- `token-registry.ts` → discovers tokens from ALL factories
+- `useAllPairs.ts` → fetches pairs from ALL factories
+- `system-prompt.ts` → generates protocol knowledge blocks grouped by type
+- `spy.ts` / `oracle.ts` → reads across all factories
 
 **Adding a new protocol requires:**
 1. A `PROTOCOLS` entry in `config/protocols.ts`
 2. Tool modules in `lib/ai/tools/<name>/`
-3. Card components + registry entries in `ToolPartRenderer.tsx`
+3. Card components + registry entries in `lib/ui/tool-card-registry.tsx`
 4. One import + spread in `lib/ai/tools/index.ts`
 
-No shared-layer edits needed (KaspaCom was added as protocol #3 this way — zero shared-layer changes).
+No shared-layer edits needed.
+
+---
+
+## Feed Layer
+
+Proactive AI insight cards when user opens the app with a connected wallet.
+
+### Insight Types
+
+| Type | Trigger | Example |
+|------|---------|---------|
+| `idle-capital` | Token balance above threshold, not in any position | "142 KAS sitting idle" |
+| `harvest-reminder` | Pending farm rewards above gas cost | "3.5 ZEAL to harvest" |
+| `better-yield` | Position earning less than best available | "ZEAL emissions paused" |
+
+### Data Flow
+
+```
+Client (useFeedInsights) → POST /api/feed (with serialized portfolio)
+  → Server: requireAuth() → check Supabase cache (feed_cache table, 2-min TTL)
+  → If miss: computeInsights(portfolio, pools) → upsert cache → return
+  → Client: FeedContainer → FeedCard[] → tap → sends actionPrompt as chat message
+```
+
+Feed cache uses Supabase (`feed_cache` table) instead of in-memory Map — works across serverless instances.
 
 ---
 
@@ -201,74 +331,9 @@ No shared-layer edits needed (KaspaCom was added as protocol #3 this way — zer
 | `getTransactionHistory` | Shared | Explorer API tx history |
 | `spyOnWallet` | Shared | Read-only portfolio for any address |
 
-### Tool Naming Convention
-
-- `{protocol}_{action}` for protocol-specific tools (e.g., `zealous_prepareSwap`)
-- No prefix for protocol-agnostic tools (e.g., `getTokenPrice`)
-- `compare{Action}` for cross-protocol comparison tools
-
 ### Tool → Card Dispatch
 
-`ToolPartRenderer.tsx` uses a `Record<string, CardRenderer>` registry:
-
-```ts
-const TOOL_CARD_REGISTRY = {
-  zealous_getSwapQuote: SwapQuoteCard,
-  zealous_prepareSwap: SwapExecutionCard,
-  kroko_getSwapQuote: SwapQuoteCard,       // Reuses same card
-  kroko_prepareSwap: KrokoSwapExecutionCard,
-  kaspacom_getSwapQuote: SwapQuoteCard,    // Reuses same card
-  kaspacom_prepareSwap: SwapExecutionCard, // Reuses ZealousSwap card (same V2 ABI)
-  compareSwapQuotes: SwapComparisonCard,
-  planStrategy: StrategyPlanCard,
-  // ... 15 more entries
-};
-```
-
----
-
-## Swap Flow: ZealousSwap vs KrokoSwap
-
-### ZealousSwap (On-Chain)
-```
-AI Tool                              Execution Card
-1. resolveTokenAddress()             1. approve(Router, amount) [if needed]
-2. findBestPath() via getAmountsOut  2. swapExactKASForTokens / swapExactTokensForTokens
-3. calculatePriceImpact()            3. Wait for receipt
-4. checkAllowance(Router)            4. Show explorer link
-5. Return tx params
-```
-
-### KrokoSwap (API + Permit2)
-```
-AI Tool                              Execution Card
-1. resolveTokenAddress()             1. approve(Permit2, MaxUint256) [if needed]
-2. GET /api/v1/quote                 2. permit2.approve(token, Router, MaxUint160) [if needed]
-3. POST /api/v1/swap → calldata     3. sendTransaction(to, data, value) [pre-built calldata]
-4. Check ERC-20 → Permit2 allowance 4. Wait for receipt
-5. Check Permit2 → Router allowance  5. Show explorer link
-6. Return tx + approval state
-```
-
-### KaspaCom (On-Chain, V2 Fork)
-```
-AI Tool                              Execution Card
-1. resolveTokenAddress()             1. approve(Router, amount) [if needed]
-2. findBestPath() via getAmountsOut  2. swapExactETHForTokens / swapExactTokensForETH
-3. checkAllowance(Router)            3. Wait for receipt
-4. Return tx params                  4. Show explorer link
-```
-Fixed 1% swap fee hardcoded in pair math. No discounts. Reuses ZealousSwap's `SwapExecutionCard`.
-
-### Cross-DEX Comparison
-```
-compareSwapQuotes tool:
-1. Promise.allSettled([zealousQuote, krokoQuote, kaspacomQuote])
-2. Filter errors, compare amountOut
-3. >0.5% diff → best price wins
-4. ≤0.5% diff → lower price impact wins
-5. Return SwapComparisonResult → SwapComparisonCard
-```
+`lib/ui/tool-card-registry.tsx` exports `TOOL_CARD_REGISTRY` — a `Record<string, CardRenderer>` mapping tool names to React card components. `ToolPartRenderer.tsx` imports this registry and wraps each card render in a `CardErrorBoundary`.
 
 ---
 
@@ -287,9 +352,7 @@ AI calls planStrategy({ steps: [...] })
   → Return StrategyPlanResult → StrategyPlanCard (read-only visualization)
 ```
 
-`resolveToolToCall()` maps step type + protocol to the exact execution tool name (e.g., `swap` + `zealous` → `zealous_prepareSwap`).
-
-### Auto-Continue Flow (`ChatContainer.tsx`)
+### Auto-Continue Flow (`useStrategyAutoContinue`)
 
 After a strategy is planned, execution is hands-free — the user only signs transactions:
 
@@ -297,42 +360,42 @@ After a strategy is planned, execution is hands-free — the user only signs tra
 User: "Farm 5 KAS"
   → AI calls planStrategy → StrategyPlanCard renders (3 steps)
   → User says "start" → AI prepares step 1 tool → SwapExecutionCard
-  → User signs tx → markExecuted("success") fires
-  → [2.5s] Auto-continue sends: "Step 1 completed. Continue with step 2..."
+  → User signs tx → markExecuted("success")
+  → Portfolio refetch starts
+  → [refetch completes] → [1.5s delay] → Auto-continue: "Step 1 completed..."
   → AI prepares step 2 → AddLiquidityCard
-  → User signs tx → markExecuted("success")
-  → [2.5s] Auto-continue sends: "Step 2 completed. Continue with step 3..."
-  → AI prepares step 3 → FarmStakeCard
-  → User signs tx → markExecuted("success")
-  → [2.5s] All steps done → sends: "All 3 steps completed!"
-  → AI congratulates user
+  → (repeat until all steps done)
+  → "All 3 steps completed!" → AI summarizes
 ```
 
 **Key implementation details:**
-- Lives entirely in `ChatContainer.tsx` — zero changes to execution cards or hooks
-- `findActiveStrategy(messages)` — scans messages backwards for most recent `planStrategy` output
-- `countCompletedStrategySteps(messages, executionStates, strategy)` — counts tool calls after the plan that match the strategy's `toolToCall` values and have `state === "success"`
-- 2.5s delay ensures portfolio refetch completes before AI reads updated wallet data
-- Guards: only fires on `"success"` (not cancel/error), only when chat is `"ready"` (not streaming), skips if all steps done
+- Strategy helpers extracted to `lib/ui/strategy-helpers.ts`
+- `useStrategyAutoContinue` hook watches `portfolioIsFetching` — waits for refetch to complete before sending continuation (prevents stale balance reads)
+- `useExecutionPersistence` hook handles DB persistence of execution states
+- Guards: only fires on `"success"`, only when chat is `"ready"`, skips if all steps done
 - Timer cleanup on unmount prevents stale sends
 
 ---
 
-## Data Discovery
+## Persistence (Supabase)
 
-### Server-Side (`lib/token-registry.ts`)
-- 5-minute in-memory cache
-- Discovers from ALL V2 factories via `getAllV2Factories()`
-- 4-round RPC pattern per factory: pairsLength → pairAddresses → pairDetails → tokenMetadata
-- Factories discovered in parallel (`Promise.all`)
-- Deduplicates tokens by symbol (prefers deepest WKAS liquidity)
-- Each pair tagged with `protocolId`
+### Tables
 
-### Client-Side (`hooks/useAllPairs.ts`)
-- Uses `useReadContracts` (wagmi) with batched multicalls
-- 3-step: pair counts from all factories → pair addresses → pair details
-- Tracks `protocolId` per pair via `addressOwnership` mapping
-- Feeds into `useTokenRegistry`, `useLpPositions`, `useTokenBalances`
+| Table | Purpose | RLS |
+|-------|---------|-----|
+| `conversations` | Chat sessions (wallet_address, title, timestamps) | Per-wallet policies |
+| `messages` | Message parts (role, parts JSON array) | Via conversation ownership |
+| `execution_states` | Transaction outcomes (tool_call_id, state, tx_hash) | Via conversation ownership |
+| `rate_limits` | Per-wallet rate limit counters | Per-wallet policies |
+| `auth_sessions` | SIWE nonces (wallet, nonce, expiry) | Service role only |
+| `feed_cache` | Feed insight cache (wallet, insights JSON, expiry) | Per-wallet policies |
+
+### Rate Limiting
+
+Supabase RPC function `check_rate_limit()`:
+- 30 requests per 15-minute window per wallet
+- Applied to `/api/chat` and `/api/auth/nonce`
+- **Fails closed** — if RPC errors, returns 503 (not bypassed)
 
 ---
 
@@ -343,22 +406,10 @@ User: "Farm 5 KAS"
 | Block | Content | Cache |
 |-------|---------|-------|
 | 1 (Static) | Identity + behavior rules + response guidelines | Cached across all users |
-| 2 (Semi-static) | Protocol knowledge (from registry) + token list | Cached ~5 min (matches server cache TTL) |
+| 2 (Semi-static) | Protocol knowledge grouped by type (DEX, Lending, etc.) + token list | Cached ~5 min |
 | 3 (Dynamic) | User wallet: balances, LP positions, farm positions, staking, discount status | Not cached (per-user) |
 
-Protocol knowledge is generated from `PROTOCOLS` registry — adding a new protocol auto-generates its section.
-
----
-
-## Persistence (Supabase)
-
-| Table | Purpose |
-|-------|---------|
-| `conversations` | Chat sessions (wallet_address, title, timestamps) |
-| `messages` | Message parts (role, parts JSON array) |
-| `execution_states` | Transaction outcomes (tool_call_id, state, tx_hash) |
-
-Rate limiting via Supabase RPC function `check_rate_limit()`.
+Protocol knowledge is generated from `PROTOCOLS` registry — adding a new protocol auto-generates its section under the appropriate type heading.
 
 ---
 
@@ -389,6 +440,8 @@ Rate limiting via Supabase RPC function `check_rate_limit()`.
 | ai | 6.0.112 | AI SDK (streaming, tool definitions) |
 | @ai-sdk/anthropic | 3.0.55 | Claude provider |
 | @ai-sdk/react | 3.0.114 | useChat hook |
+| siwe | latest | Sign-In With Ethereum message parsing/verification |
+| jose | latest | JWT sign/verify (HS256) |
 | zod | 4.3.6 | Schema validation (env vars, tool inputs) |
 | tailwindcss | 4 | Styling (dark theme) |
 
@@ -405,6 +458,7 @@ Rate limiting via Supabase RPC function `check_rate_limit()`.
 - `ANTHROPIC_API_KEY` — Claude API key (required)
 - `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL (required)
 - `SUPABASE_SERVICE_ROLE_KEY` — Supabase service key (required)
+- `JWT_SECRET` — Secret for signing auth JWTs, min 32 chars (required)
 - `EXPLORER_API_URL` — Blockscout API (default: explorer proxy)
 
 All validated at startup via Zod in `lib/env.ts`.

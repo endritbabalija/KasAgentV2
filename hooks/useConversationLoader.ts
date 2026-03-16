@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import type { UIMessage } from "ai";
 import type { ExecutionRecord } from "@/components/chat/ExecutionStateContext";
 
@@ -14,6 +14,7 @@ interface ConversationLoaderResult {
 /**
  * Given a conversation ID, loads its messages and execution states.
  * Auth comes from httpOnly cookie — no wallet param needed.
+ * Uses AbortController to cancel stale fetches on rapid navigation.
  */
 export function useConversationLoader(
   conversationId: string | null
@@ -23,20 +24,31 @@ export function useConversationLoader(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
     if (!conversationId) {
       setMessages([]);
       setExecutionStates({});
       return;
     }
 
+    const controller = new AbortController();
     setIsLoading(true);
     setError(null);
-    try {
-      // No wallet param — server reads from JWT cookie
-      const res = await fetch(`/api/conversations/${conversationId}`);
-      if (res.ok) {
-        const data = await res.json();
+
+    fetch(`/api/conversations/${conversationId}`, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 401) {
+            setError("Session expired. Please reconnect your wallet.");
+          } else {
+            setError("Failed to load conversation");
+          }
+          return null;
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (!data) return;
         setMessages(
           data.messages.map((m: { id: string; role: string; parts: unknown[] }) => ({
             id: m.id,
@@ -45,22 +57,18 @@ export function useConversationLoader(
           }))
         );
         setExecutionStates(data.executionStates ?? {});
-      } else if (res.status === 401) {
-        setError("Session expired. Please reconnect your wallet.");
-      } else {
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error("[useConversationLoader] Failed:", err);
         setError("Failed to load conversation");
-      }
-    } catch (err) {
-      console.error("[useConversationLoader] Failed:", err);
-      setError("Failed to load conversation");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [conversationId]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoading(false);
+      });
 
-  useEffect(() => {
-    load();
-  }, [load]);
+    return () => controller.abort();
+  }, [conversationId]);
 
   return { messages, executionStates, isLoading, error };
 }
