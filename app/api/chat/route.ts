@@ -14,6 +14,15 @@ import type {
 import "@/lib/env"; // validate env vars at startup
 import { supabase } from "@/lib/supabase";
 import { withAuth } from "@/lib/api-handler";
+import {
+  createConversation,
+  deleteLastAssistantMessages,
+  generateTitle,
+  getConversationOwner,
+  getMessages,
+  saveMessage,
+  updateConversationTimestamp,
+} from "@/lib/db/queries";
 
 export const POST = withAuth(async (req, { wallet }) => {
   // Rate limiting (Supabase-backed, persists across deploys)
@@ -36,19 +45,42 @@ export const POST = withAuth(async (req, { wallet }) => {
   }
 
   const body = await req.json();
-  const messages: UIMessage[] = body.messages;
-  if (!Array.isArray(messages) || messages.length === 0) {
+  const conversationId: string = body.conversationId;
+  const message: UIMessage = body.message;
+  const portfolio: SerializedPortfolio | null = body.portfolio ?? null;
+  const infinityPools: SerializedInfinityPool[] = body.infinityPools ?? [];
+  const trigger: string | undefined = body.trigger;
+
+  if (!conversationId || !message) {
     return Response.json(
-      { error: "messages field is required and must be a non-empty array" },
+      { error: "conversationId and message are required" },
       { status: 400 }
     );
   }
 
-  const portfolio: SerializedPortfolio | null = body.portfolio ?? null;
-  const infinityPools: SerializedInfinityPool[] = body.infinityPools ?? [];
+  // Single query: check if conversation exists and who owns it
+  const owner = await getConversationOwner(conversationId);
+  if (!owner) {
+    // Conversation doesn't exist — create it
+    const title = generateTitle([message]);
+    await createConversation(conversationId, wallet, title);
+  } else if (owner !== wallet.toLowerCase()) {
+    return Response.json({ error: "Unauthorized" }, { status: 403 });
+  }
+
+  if (trigger === "regenerate-message") {
+    // Regenerate: user message already in DB, delete old assistant response(s)
+    await deleteLastAssistantMessages(conversationId);
+  } else {
+    // Normal: save user message before streaming
+    await saveMessage(conversationId, message);
+  }
+
+  // Load full history from DB
+  const previousMessages = await getMessages(conversationId);
 
   const systemPrompt = await buildSystemPrompt(portfolio, infinityPools);
-  const modelMessages = await convertToModelMessages(messages);
+  const modelMessages = await convertToModelMessages(previousMessages);
 
   try {
     const result = streamText({
@@ -62,7 +94,19 @@ export const POST = withAuth(async (req, { wallet }) => {
       },
     });
 
+    // Ensure stream runs to completion even on client disconnect
+    result.consumeStream();
+
     return result.toUIMessageStreamResponse({
+      originalMessages: previousMessages,
+      onFinish: async ({ responseMessage }) => {
+        try {
+          await saveMessage(conversationId, responseMessage);
+          await updateConversationTimestamp(conversationId);
+        } catch (err) {
+          console.error("[chat onFinish] Failed to save response:", err);
+        }
+      },
       onError(error) {
         console.error("[stream response error]", error);
         return "Something went wrong. Please try again.";

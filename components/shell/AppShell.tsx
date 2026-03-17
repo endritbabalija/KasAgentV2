@@ -10,7 +10,7 @@ import { PortfolioSlideOut } from "./PortfolioSlideOut";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   useReconnectOnFocus();
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const auth = useAuth();
 
   return (
@@ -26,7 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
           {(!isConnected || auth.status !== "loading") && (
-            <Fragment key={auth.isAuthenticated ? "authed" : "guest"}>
+            <Fragment key={address ?? "guest"}>
               {children}
             </Fragment>
           )}

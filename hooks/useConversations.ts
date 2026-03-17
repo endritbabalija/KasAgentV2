@@ -2,7 +2,6 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import type { UIMessage } from "ai";
 import { useAuth } from "@/lib/auth-provider";
 
 export interface ConversationSummary {
@@ -30,35 +29,6 @@ export function useConversations() {
       },
       enabled: auth.isAuthenticated,
     });
-
-  // --- Mutation: save (create) conversation ---
-  const saveMutation = useMutation({
-    mutationFn: async (messages: UIMessage[]) => {
-      const res = await fetch("/api/conversations/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages }),
-      });
-      if (!res.ok) throw new Error("Failed to save");
-      const data = await res.json();
-      return data.conversationId as string;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
-    },
-  });
-
-  const saveConversation = useCallback(
-    async (messages: UIMessage[]): Promise<string | null> => {
-      if (!auth.isAuthenticated || messages.length === 0) return null;
-      try {
-        return await saveMutation.mutateAsync(messages);
-      } catch {
-        return null;
-      }
-    },
-    [auth.isAuthenticated, saveMutation]
-  );
 
   // --- Mutation: delete conversation (optimistic) ---
   const deleteMutation = useMutation({
@@ -105,7 +75,6 @@ export function useConversations() {
     conversations: auth.isAuthenticated ? conversations : [],
     isConversationsLoading,
     refreshConversations,
-    saveConversation,
     deleteConversation,
   };
 }

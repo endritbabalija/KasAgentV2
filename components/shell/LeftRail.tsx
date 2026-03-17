@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Plus, X } from "lucide-react";
 import { useConversations } from "@/hooks/useConversations";
@@ -9,9 +9,24 @@ import { ConversationList } from "@/components/sidebar/ConversationList";
 
 export function LeftRail() {
   const router = useRouter();
-  const pathname = usePathname();
+  const routerPathname = usePathname();
   const { conversations, isConversationsLoading, deleteConversation } = useConversations();
   const leftRail = useLeftRail();
+
+  // Track pathname from both Next.js router and pushState events.
+  // pushState (used by Chat.tsx for new conversations) doesn't update usePathname(),
+  // so we listen for the custom 'pushstate' event to stay in sync.
+  const [pathname, setPathname] = useState(routerPathname);
+
+  useEffect(() => {
+    setPathname(routerPathname);
+  }, [routerPathname]);
+
+  useEffect(() => {
+    const onPushState = () => setPathname(window.location.pathname);
+    window.addEventListener("pushstate", onPushState);
+    return () => window.removeEventListener("pushstate", onPushState);
+  }, []);
 
   // Extract active conversation ID from URL
   const activeConversationId = pathname.startsWith("/c/")
