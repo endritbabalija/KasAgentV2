@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import type { UIMessage } from "ai";
+import type { ChatMessage } from "@/lib/types";
 import type { ExecutionRecord } from "@/components/chat/ExecutionStateContext";
 import { findActiveStrategy, countCompletedStrategySteps } from "@/lib/ui/strategy-helpers";
 
 interface UseStrategyAutoContinueOptions {
-  messagesRef: React.RefObject<UIMessage[]>;
+  messagesRef: React.RefObject<ChatMessage[]>;
   sendMessageRef: React.RefObject<(opts: { text: string }) => void>;
   statusRef: React.RefObject<string>;
   executionStatesRef: React.RefObject<Record<string, ExecutionRecord>>;

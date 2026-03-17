@@ -2,8 +2,8 @@ import {
   streamText,
   convertToModelMessages,
   stepCountIs,
-  type UIMessage,
 } from "ai";
+import type { ChatMessage } from "@/lib/types";
 import { anthropic } from "@ai-sdk/anthropic";
 import { buildSystemPrompt } from "@/lib/ai/system-prompt";
 import { aiTools } from "@/lib/ai/tools";
@@ -46,7 +46,7 @@ export const POST = withAuth(async (req, { wallet }) => {
 
   const body = await req.json();
   const conversationId: string = body.conversationId;
-  const message: UIMessage = body.message;
+  const message = body.message as ChatMessage;
   const portfolio: SerializedPortfolio | null = body.portfolio ?? null;
   const infinityPools: SerializedInfinityPool[] = body.infinityPools ?? [];
   const trigger: string | undefined = body.trigger;
@@ -101,7 +101,7 @@ export const POST = withAuth(async (req, { wallet }) => {
       originalMessages: previousMessages,
       onFinish: async ({ responseMessage }) => {
         try {
-          await saveMessage(conversationId, responseMessage);
+          await saveMessage(conversationId, responseMessage as ChatMessage);
           await updateConversationTimestamp(conversationId);
         } catch (err) {
           console.error("[chat onFinish] Failed to save response:", err);

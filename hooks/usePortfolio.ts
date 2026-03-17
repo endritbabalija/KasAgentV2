@@ -36,12 +36,17 @@ export function usePortfolio(): Portfolio {
   const farmPos = useFarmPositions();
   const stakingPos = useStakingPositions();
 
+  const refetchTokenBalances = tokenBalances.refetch;
+  const refetchLpPos = lpPos.refetch;
+  const refetchFarmPos = farmPos.refetch;
+  const refetchStakingPos = stakingPos.refetch;
+
   const refetch = useCallback(() => {
-    tokenBalances.refetch();
-    lpPos.refetch();
-    farmPos.refetch();
-    stakingPos.refetch();
-  }, [tokenBalances.refetch, lpPos.refetch, farmPos.refetch, stakingPos.refetch]);
+    refetchTokenBalances();
+    refetchLpPos();
+    refetchFarmPos();
+    refetchStakingPos();
+  }, [refetchTokenBalances, refetchLpPos, refetchFarmPos, refetchStakingPos]);
 
   return useMemo<Portfolio>(() => ({
     address,

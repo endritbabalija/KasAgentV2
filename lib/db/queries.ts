@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase";
-import type { UIMessage } from "ai";
+import type { ChatMessage } from "@/lib/types";
 
-export function generateTitle(messages: UIMessage[]): string {
+export function generateTitle(messages: ChatMessage[]): string {
   const firstUserMsg = messages.find((m) => m.role === "user");
   if (!firstUserMsg) return "New Chat";
 
@@ -44,7 +44,7 @@ export async function getConversationOwner(
 
 export async function saveMessage(
   conversationId: string,
-  message: UIMessage
+  message: ChatMessage
 ): Promise<void> {
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
@@ -56,7 +56,7 @@ export async function saveMessage(
 
 export async function getMessages(
   conversationId: string
-): Promise<UIMessage[]> {
+): Promise<ChatMessage[]> {
   const { data, error } = await supabase
     .from("messages")
     .select("id, role, parts, created_at")
@@ -74,7 +74,7 @@ export async function getConversationWithMessages(
   conversationId: string,
   wallet: string
 ): Promise<{
-  messages: UIMessage[];
+  messages: ChatMessage[];
   executionStates: Record<string, { state: string; txHash?: string }>;
 } | null> {
   // Verify ownership

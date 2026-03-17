@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import type { UIMessage } from "ai";
+import type { ChatMessage } from "@/lib/types";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useInfinityPoolData } from "@/hooks/useInfinityPoolData";
 import { useAuth } from "@/lib/auth-provider";
@@ -14,7 +14,7 @@ import type { ExecutionRecord } from "@/components/chat/ExecutionStateContext";
 
 interface ChatProps {
   id: string;
-  initialMessages: UIMessage[];
+  initialMessages: ChatMessage[];
   initialExecutionStates?: Record<string, ExecutionRecord>;
 }
 
@@ -81,7 +81,7 @@ export function Chat({
   }, []);
 
   // Track messages for feed visibility
-  const handleMessagesChange = useCallback((msgs: UIMessage[]) => {
+  const handleMessagesChange = useCallback((msgs: ChatMessage[]) => {
     if (msgs.length > 0) setHasSubmitted(true);
   }, []);
 

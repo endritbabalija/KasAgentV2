@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport } from "ai";
+import type { ChatMessage } from "@/lib/types";
 import type { Portfolio } from "@/hooks/usePortfolio";
 import type { InfinityPoolInfo } from "@/hooks/useInfinityPoolData";
 import {
@@ -27,11 +28,11 @@ interface ChatContainerProps {
   conversationId: string;
   portfolio: Portfolio;
   pools: InfinityPoolInfo[];
-  initialMessages: UIMessage[];
+  initialMessages: ChatMessage[];
   initialExecutionStates: Record<string, ExecutionRecord>;
   onFirstSubmit?: () => void;
   onFinish?: () => void;
-  onMessagesChange?: (messages: UIMessage[]) => void;
+  onMessagesChange?: (messages: ChatMessage[]) => void;
   initialInput?: string;
 }
 
@@ -95,7 +96,7 @@ export function ChatContainer({
   );
 
   // Refs to avoid stale closures
-  const messagesRef = useRef<UIMessage[]>(initialMessages);
+  const messagesRef = useRef<ChatMessage[]>(initialMessages);
   const sendMessageRef = useRef<(opts: { text: string }) => void>(null!);
   const statusRef = useRef<string>("ready");
   const executionStatesRef = useRef<Record<string, ExecutionRecord>>(
@@ -119,7 +120,7 @@ export function ChatContainer({
     onSuccess: onExecutionSuccess,
   });
 
-  const { messages, status, error, stop, sendMessage, regenerate } = useChat({
+  const { messages, status, error, stop, sendMessage, regenerate } = useChat<ChatMessage>({
     id: conversationId,
     transport,
     messages: initialMessages,

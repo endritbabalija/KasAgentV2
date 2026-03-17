@@ -388,9 +388,22 @@ export const zealousYieldTools = {
         const opportunities = buildOpportunities(pairs, farmData, infinityData, tokenPrices, addrToSym, addrToDecimals, tokens);
         const filtered = rankAndFilter(opportunities, filterToken);
 
+        // Only include prices for tokens in the returned opportunities + filterToken
+        const relevantSymbols = new Set<string>();
+        if (filterToken) relevantSymbols.add(filterToken.toUpperCase());
+        for (const opp of filtered) {
+          for (const t of opp.tokens) relevantSymbols.add(t.toUpperCase());
+        }
+        const relevantPrices: Record<string, number> = {};
+        for (const [sym, price] of Object.entries(tokenPricesInKas)) {
+          if (relevantSymbols.has(sym.toUpperCase())) {
+            relevantPrices[sym] = price;
+          }
+        }
+
         return {
           opportunities: filtered,
-          tokenPricesInKas,
+          tokenPricesInKas: relevantPrices,
           blockTimeSeconds: BLOCK_TIME_SECONDS,
           fetchedAt: new Date().toISOString(),
         };
