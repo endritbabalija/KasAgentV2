@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 import { useTokenBalances, type TokenBalance } from "./useTokenBalances";
 import { useLpPositions, type LpPosition } from "./useLpPositions";
@@ -43,7 +43,7 @@ export function usePortfolio(): Portfolio {
     stakingPos.refetch();
   }, [tokenBalances.refetch, lpPos.refetch, farmPos.refetch, stakingPos.refetch]);
 
-  return {
+  return useMemo<Portfolio>(() => ({
     address,
     isConnected,
     isLoading:
@@ -63,5 +63,12 @@ export function usePortfolio(): Portfolio {
     farmGlobals: farmPos.globals,
     stakingPositions: stakingPos.positions,
     refetch,
-  };
+  }), [
+    address, isConnected,
+    tokenBalances.isLoading, tokenBalances.isFetching, tokenBalances.isError, tokenBalances.balances,
+    lpPos.isLoading, lpPos.isFetching, lpPos.isError, lpPos.positions,
+    farmPos.isLoading, farmPos.isFetching, farmPos.isError, farmPos.positions, farmPos.globals,
+    stakingPos.isLoading, stakingPos.isFetching, stakingPos.isError, stakingPos.positions,
+    refetch,
+  ]);
 }

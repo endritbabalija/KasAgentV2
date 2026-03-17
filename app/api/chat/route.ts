@@ -13,49 +13,44 @@ import type {
 } from "@/lib/ai/serializers";
 import "@/lib/env"; // validate env vars at startup
 import { supabase } from "@/lib/supabase";
-import { requireAuth } from "@/lib/auth-middleware";
+import { withAuth } from "@/lib/api-handler";
 
-export async function POST(req: Request) {
+export const POST = withAuth(async (req, { wallet }) => {
+  // Rate limiting (Supabase-backed, persists across deploys)
+  const { data: rl, error: rlError } = await supabase.rpc("check_rate_limit", {
+    wallet_addr: wallet,
+  });
+  if (rlError) {
+    console.error("[rate-limit] Supabase RPC error:", rlError);
+    // Fail closed — block request if rate limit check is unavailable
+    return Response.json(
+      { error: "Service temporarily unavailable. Please try again." },
+      { status: 503 }
+    );
+  }
+  if (rl && !rl.allowed) {
+    return Response.json(
+      { error: `Rate limit exceeded. Try again in ${rl.retry_in_min} minutes.` },
+      { status: 429 }
+    );
+  }
+
+  const body = await req.json();
+  const messages: UIMessage[] = body.messages;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return Response.json(
+      { error: "messages field is required and must be a non-empty array" },
+      { status: 400 }
+    );
+  }
+
+  const portfolio: SerializedPortfolio | null = body.portfolio ?? null;
+  const infinityPools: SerializedInfinityPool[] = body.infinityPools ?? [];
+
+  const systemPrompt = await buildSystemPrompt(portfolio, infinityPools);
+  const modelMessages = await convertToModelMessages(messages);
+
   try {
-    // 1A — Verify wallet via JWT cookie (cryptographic proof of ownership)
-    const authResult = await requireAuth(req);
-    if (authResult instanceof Response) return authResult;
-    const walletAddress = authResult;
-
-    // 1B — Rate limiting (Supabase-backed, persists across deploys)
-    const { data: rl, error: rlError } = await supabase.rpc("check_rate_limit", {
-      wallet_addr: walletAddress,
-    });
-    if (rlError) {
-      console.error("[rate-limit] Supabase RPC error:", rlError);
-      // Fail closed — block request if rate limit check is unavailable
-      return Response.json(
-        { error: "Service temporarily unavailable. Please try again." },
-        { status: 503 }
-      );
-    }
-    if (rl && !rl.allowed) {
-      return Response.json(
-        { error: `Rate limit exceeded. Try again in ${rl.retry_in_min} minutes.` },
-        { status: 429 }
-      );
-    }
-
-    const body = await req.json();
-    const messages: UIMessage[] = body.messages;
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return Response.json(
-        { error: "messages field is required and must be a non-empty array" },
-        { status: 400 }
-      );
-    }
-
-    const portfolio: SerializedPortfolio | null = body.portfolio ?? null;
-    const infinityPools: SerializedInfinityPool[] = body.infinityPools ?? [];
-
-    const systemPrompt = await buildSystemPrompt(portfolio, infinityPools);
-    const modelMessages = await convertToModelMessages(messages);
-
     const result = streamText({
       model: anthropic("claude-sonnet-4-20250514"),
       system: systemPrompt,
@@ -74,8 +69,6 @@ export async function POST(req: Request) {
       },
     });
   } catch (err: unknown) {
-    console.error("[/api/chat] Unhandled error:", err);
-
     const isAnthropicError =
       err instanceof Error &&
       (err.constructor.name.includes("Anthropic") ||
@@ -89,9 +82,6 @@ export async function POST(req: Request) {
       );
     }
 
-    return Response.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    throw err; // re-throw → withAuth wrapper catches as 500
   }
-}
+});

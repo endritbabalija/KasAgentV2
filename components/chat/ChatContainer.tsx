@@ -12,6 +12,7 @@ import {
   type SerializedInfinityPool,
 } from "@/lib/ai/serializers";
 import { useTokenRegistry } from "@/hooks/useTokenRegistry";
+import { useAuth } from "@/lib/auth-provider";
 import { useExecutionPersistence } from "@/hooks/useExecutionPersistence";
 import { useStrategyAutoContinue } from "@/hooks/useStrategyAutoContinue";
 import { AlertTriangle } from "lucide-react";
@@ -73,6 +74,7 @@ export function ChatContainer({
   initialInput,
 }: ChatContainerProps) {
   const { getTokenSymbol, tokenMap } = useTokenRegistry();
+  const { handleSessionExpired } = useAuth();
   const getTokenDecimals = useCallback(
     (address: string): number =>
       tokenMap.get(address.toLowerCase())?.decimals ?? 18,
@@ -134,6 +136,15 @@ export function ChatContainer({
     },
   });
 
+  // Detect auth expiry from chat API 401 errors
+  useEffect(() => {
+    if (!error) return;
+    const msg = error.message || String(error);
+    if (msg.includes("401") || msg.includes("Authentication required")) {
+      handleSessionExpired();
+    }
+  }, [error, handleSessionExpired]);
+
   // Keep refs and parent in sync
   useEffect(() => {
     messagesRef.current = messages;
@@ -194,7 +205,7 @@ export function ChatContainer({
         : null,
       serializeInfinityPools(pools)
     );
-  }, [portfolio.isConnected, portfolio.address, portfolio.balances, portfolio.lpPositions, portfolio.farmPositions, portfolio.farmGlobals, portfolio.stakingPositions, pools, bodyStore, getTokenSymbol, getTokenDecimals]);
+  }, [portfolio, pools, bodyStore, getTokenSymbol, getTokenDecimals]);
 
   const isLoading = status === "submitted" || status === "streaming";
   const isWaiting = status === "submitted";

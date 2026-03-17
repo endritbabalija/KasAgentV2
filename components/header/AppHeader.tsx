@@ -2,12 +2,15 @@
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Menu, Wallet } from "lucide-react";
-import { useAppContext } from "@/components/shell/AppContext";
+import { usePortfolio } from "@/hooks/usePortfolio";
+import { usePortfolioPanel, useLeftRail } from "@/stores/ui";
 import { formatTokenAmount } from "@/lib/format";
 import { NetworkStatus } from "./NetworkStatus";
 
 export function AppHeader() {
-  const { portfolio, portfolioPanel, leftRail } = useAppContext();
+  const portfolio = usePortfolio();
+  const portfolioPanel = usePortfolioPanel();
+  const leftRail = useLeftRail();
 
   const kasBalance = portfolio.balances.find((b) => b.symbol === "KAS");
 

@@ -3,18 +3,15 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Plus, X } from "lucide-react";
-import { useAppContext } from "./AppContext";
+import { useConversations } from "@/hooks/useConversations";
+import { useLeftRail } from "@/stores/ui";
 import { ConversationList } from "@/components/sidebar/ConversationList";
 
 export function LeftRail() {
   const router = useRouter();
   const pathname = usePathname();
-  const {
-    conversations,
-    isConversationsLoading,
-    deleteConversation,
-    leftRail,
-  } = useAppContext();
+  const { conversations, isConversationsLoading, deleteConversation } = useConversations();
+  const leftRail = useLeftRail();
 
   // Extract active conversation ID from URL
   const activeConversationId = pathname.startsWith("/c/")

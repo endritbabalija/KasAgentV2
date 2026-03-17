@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback } from "react";
 import type { FeedInsight } from "@/lib/feed/types";
 import type { Portfolio } from "@/hooks/usePortfolio";
 import type { InfinityPoolInfo } from "@/hooks/useInfinityPoolData";
@@ -9,12 +10,11 @@ import {
   serializeInfinityPools,
 } from "@/lib/ai/serializers";
 import { useTokenRegistry } from "@/hooks/useTokenRegistry";
+import { useAuth } from "@/lib/auth-provider";
 
 export function useFeedInsights(portfolio: Portfolio, pools: InfinityPoolInfo[]) {
-  const [insights, setInsights] = useState<FeedInsight[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const { getTokenSymbol, tokenMap } = useTokenRegistry();
+  const auth = useAuth();
 
   const getTokenDecimals = useCallback(
     (address: string): number =>
@@ -22,66 +22,50 @@ export function useFeedInsights(portfolio: Portfolio, pools: InfinityPoolInfo[])
     [tokenMap]
   );
 
-  useEffect(() => {
-    if (!portfolio.isConnected || !portfolio.address || portfolio.isLoading) {
-      setInsights([]);
-      return;
-    }
+  const enabled =
+    auth.isAuthenticated &&
+    portfolio.isConnected &&
+    !!portfolio.address &&
+    !portfolio.isLoading;
 
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
+  const {
+    data: insights = [],
+    isLoading,
+    error,
+  } = useQuery<FeedInsight[]>({
+    queryKey: ["feed", portfolio.address],
+    queryFn: async ({ signal }) => {
+      const serialized = serializePortfolio(
+        portfolio.address!,
+        portfolio.balances,
+        portfolio.lpPositions,
+        portfolio.farmPositions,
+        portfolio.farmGlobals,
+        portfolio.stakingPositions,
+        getTokenSymbol,
+        getTokenDecimals
+      );
 
-    const serialized = serializePortfolio(
-      portfolio.address,
-      portfolio.balances,
-      portfolio.lpPositions,
-      portfolio.farmPositions,
-      portfolio.farmGlobals,
-      portfolio.stakingPositions,
-      getTokenSymbol,
-      getTokenDecimals
-    );
-
-    fetch("/api/feed", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        portfolio: serialized,
-        infinityPools: serializeInfinityPools(pools),
-      }),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Feed API error");
-        return res.json();
-      })
-      .then((data: FeedInsight[]) => {
-        if (!cancelled) setInsights(data);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.error("[useFeedInsights]", err);
-          setError("Failed to load insights");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
+      const res = await fetch("/api/feed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          portfolio: serialized,
+          infinityPools: serializeInfinityPools(pools),
+        }),
+        signal,
       });
+      if (!res.ok) throw new Error("Feed API error");
+      return res.json() as Promise<FeedInsight[]>;
+    },
+    enabled,
+    staleTime: 120_000, // match 2-minute server cache TTL
+    retry: false,
+  });
 
-    return () => { cancelled = true; };
-  }, [
-    portfolio.isConnected,
-    portfolio.address,
-    portfolio.isLoading,
-    portfolio.balances,
-    portfolio.lpPositions,
-    portfolio.farmPositions,
-    portfolio.farmGlobals,
-    portfolio.stakingPositions,
-    pools,
-    getTokenSymbol,
-    getTokenDecimals,
-  ]);
-
-  return { insights, isLoading, error };
+  return {
+    insights,
+    isLoading: enabled && isLoading,
+    error: error ? "Failed to load insights" : null,
+  };
 }

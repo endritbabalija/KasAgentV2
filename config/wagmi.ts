@@ -1,5 +1,5 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { http, fallback } from "wagmi";
+import { http, fallback, cookieStorage, createStorage } from "wagmi";
 import { kasplexL2 } from "./chains";
 import { clientEnv } from "@/lib/env";
 
@@ -22,4 +22,5 @@ export const config = getDefaultConfig({
     [kasplexL2.id]: transports.length > 1 ? fallback(transports) : transports[0],
   },
   ssr: true,
+  storage: createStorage({ storage: cookieStorage }),
 });

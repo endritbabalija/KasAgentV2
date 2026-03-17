@@ -2,11 +2,15 @@
 
 import { useEffect } from "react";
 import { X } from "lucide-react";
-import { useAppContext } from "./AppContext";
+import { usePortfolio } from "@/hooks/usePortfolio";
+import { useInfinityPoolData } from "@/hooks/useInfinityPoolData";
+import { usePortfolioPanel } from "@/stores/ui";
 import { PortfolioPanel } from "@/components/sidebar/PortfolioPanel";
 
 export function PortfolioSlideOut() {
-  const { portfolio, pools, portfolioPanel } = useAppContext();
+  const portfolio = usePortfolio();
+  const { pools } = useInfinityPoolData();
+  const portfolioPanel = usePortfolioPanel();
 
   // Lock body scroll when open on mobile
   useEffect(() => {

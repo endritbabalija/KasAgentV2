@@ -59,7 +59,13 @@ export function MessageList({
         }
       }
     }
-    return actions;
+    // Deduplicate by label to prevent duplicate React keys
+    const seen = new Set<string>();
+    return actions.filter((a) => {
+      if (seen.has(a.label)) return false;
+      seen.add(a.label);
+      return true;
+    });
   }, [messages, isWaiting, isStreaming]);
 
   return (

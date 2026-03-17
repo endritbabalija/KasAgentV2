@@ -9,8 +9,8 @@ export async function POST(req: Request) {
       return Response.json({ error: "Missing message or signature" }, { status: 400 });
     }
 
-    // Extract request domain for SIWE validation
-    const host = req.headers.get("host");
+    // Extract request domain for SIWE validation (X-Forwarded-Host for reverse proxy support)
+    const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
     if (!host) {
       return Response.json({ error: "Missing host header" }, { status: 400 });
     }
@@ -52,7 +52,6 @@ export async function POST(req: Request) {
     );
   } catch (err) {
     console.error("[/api/auth/verify]", err);
-    const msg = err instanceof Error ? err.message : "Verification failed";
-    return Response.json({ error: msg }, { status: 401 });
+    return Response.json({ error: "Verification failed" }, { status: 401 });
   }
 }

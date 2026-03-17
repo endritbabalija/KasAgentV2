@@ -40,7 +40,16 @@
       "Bash(npm list:*)",
       "Bash(find:*)",
       "mcp__plugin_supabase_supabase__get_advisors",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(cd:*)",
+      "WebFetch(domain:rainbowkit.com)",
+      "WebFetch(domain:blog.spruceid.com)",
+      "WebFetch(domain:v1.rainbowkit.com)",
+      "WebFetch(domain:v0.rainbowkit.com)",
+      "Bash(wc:*)",
+      "Bash(test:*)",
+      "WebFetch(domain:wagmi.sh)",
+      "WebFetch(domain:www.rainbowkit.com)"
     ]
   }
 }
