@@ -3,16 +3,9 @@ import { ToolCardSkeleton } from "./cards/ToolCardSkeleton";
 import { ToolErrorCard } from "./cards/ToolErrorCard";
 import { TOOL_CARD_REGISTRY } from "@/lib/ui/tool-card-registry";
 import { useExecutionState } from "./ExecutionStateContext";
+import type { ParsedToolPart } from "@/lib/ui/parse-tool-part";
 
-interface ToolPart {
-  toolName: string;
-  state: string;
-  output?: unknown;
-  errorText?: string;
-  toolCallId?: string;
-}
-
-export function ToolPartRenderer({ part }: { part: ToolPart }) {
+export function ToolPartRenderer({ part }: { part: ParsedToolPart }) {
   const { getExecutionState } = useExecutionState();
   const { toolName, state } = part;
 

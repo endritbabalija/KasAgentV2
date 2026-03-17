@@ -2,7 +2,7 @@ import type { ActiveFarmsResult } from "@/lib/ai/tool-types";
 import { formatAmount } from "./shared/ExecutionCardParts";
 
 export function FarmsTableCard({ data }: { data: ActiveFarmsResult }) {
-  const totalAlloc = parseInt(data.totalAllocPoint) || 1;
+  const totalAlloc = Math.max(1, parseInt(data.totalAllocPoint, 10) || 0);
 
   return (
     <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">

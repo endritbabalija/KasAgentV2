@@ -1,210 +1,224 @@
-# KasAgent
+# KasAgentV2
 
-KasAgent is an AI DeFi copilot for Kasplex L2. It combines a wallet-connected chat interface with on-chain tooling so users can inspect their portfolio, discover yield, and execute ZealousSwap actions through natural language.
+AI-powered DeFi copilot for [Kasplex L2](https://kasplex.org). Chat with Claude to swap tokens, provide liquidity, farm, stake, and execute multi-step strategies — all non-custodially.
 
-This repository implements the current KasAgent web app and follows the product direction in [PRD.md](./PRD.md).
+---
 
-## What KasAgent Does
+## Overview
 
-- Connects an EVM wallet on Kasplex L2
-- Reads wallet balances, LP positions, farm positions, and InfinityPool staking positions
-- Provides an AI chat UI backed by tool calls and structured response cards
-- Surfaces swap quotes, pool reserves, farm data, yield opportunities, and transaction history
-- Can prepare and execute DeFi actions such as swaps, liquidity actions, farm staking, and InfinityPool staking
-- Persists conversation history per wallet via Supabase, with a sidebar for browsing past chats
-- Keeps transaction signing non-custodial in the user's wallet
+KasAgentV2 gives you a conversational interface to manage your DeFi portfolio on Kasplex L2. Describe what you want in plain language and the AI researches, plans, and prepares transactions for you to sign. It integrates three DEX protocols with 23 on-chain tools, real-time streaming responses, and a portfolio-aware feed of proactive insights.
 
-## Current MVP Scope
+**Network**: Kasplex L2 — Chain ID `202555`
+**RPC**: `https://evmrpc.kasplex.org`
+**Explorer**: `https://explorer.kasplex.org`
 
-The app is focused on the Kasplex L2 ecosystem and ZealousSwap.
+---
 
-Implemented areas in this codebase include:
+## Features
 
-- Wallet connection with `wagmi` + `RainbowKit`
-- Portfolio aggregation hooks for balances, LPs, farms, and staking
-- Chat-driven UI with inline tool result cards
-- Database-backed conversation persistence (Supabase Postgres) with tabbed sidebar (Chats | Portfolio)
-- Anthropic-powered AI route for intent handling and tool orchestration
-- Direct execution cards for swap, add/remove liquidity, farm stake/unstake, and InfinityPool stake/unstake
-- Explorer-backed recent transaction history in chat
-- ZealousSwap-oriented tool modules for:
-  - swaps
-  - liquidity
-  - farms
-  - staking
-  - yield discovery
-  - transaction history
+- **Conversational DeFi** — swap, add/remove liquidity, farm, and stake via natural language
+- **Multi-protocol** — ZealousSwap (full suite), KrokoSwap (V2+V3), KaspaCom (V2)
+- **Cross-DEX comparison** — automatically compares rates across all protocols
+- **Strategy planner** — multi-step operations (e.g. swap → add LP → stake in farm) with live quotes
+- **Portfolio feed** — proactive insights for idle capital, unclaimed rewards, better yield
+- **Wallet inspection** — inspect any wallet's positions and balances
+- **Streaming AI** — real-time responses with rich tool output cards
+- **Non-custodial** — app never holds keys; every transaction requires your wallet signature
 
-Tokens are discovered dynamically on-chain from ZealousSwap Factory pairs — no hardcoded token list. The server-side registry (`lib/token-registry.ts`) caches discovered tokens for 5 minutes; the client-side hook (`hooks/useTokenRegistry.ts`) provides the same data to UI components. KAS (native) and WKAS are always included.
-
-Not in scope for this repo today:
-
-- autonomous agent execution
-- multi-chain support
-- mobile app experience
-- fiat on/off ramps
+---
 
 ## Tech Stack
 
-- Next.js 16
-- React 19
-- TypeScript
-- Tailwind CSS 4
-- `wagmi`, `viem`, `RainbowKit`
-- Vercel AI SDK
-- Anthropic Claude
-- Supabase (Postgres — conversation persistence)
+| Layer | Libraries |
+|-------|-----------|
+| Framework | Next.js 16 (App Router, Turbopack), React 19 |
+| Wallet | wagmi 2.x, viem 2.x, RainbowKit 2.x |
+| AI | Vercel AI SDK 6.x, Anthropic Claude Sonnet 4 |
+| Auth | SIWE 3.x + jose (JWT, httpOnly cookies) |
+| Database | Supabase (PostgreSQL + RLS) |
+| Styling | Tailwind CSS 4, dark theme |
+| State | TanStack Query 5, Zustand 5 |
 
-## Network and Protocol
-
-### Kasplex L2
-
-- Chain ID: `202555`
-- RPC: `https://evmrpc.kasplex.org`
-- Explorer: `https://explorer.kasplex.org`
-- Native token: `KAS`
-
-### ZealousSwap Contracts
-
-- Router: `0xA5B0946D31aD2d251e0fe2dfEA8808BFd475e607`
-- Factory: `0x98Bb580A77eE329796a79aBd05c6D2F2b3D5E1bD`
-- MasterChef: `0x97ac386fFf8d25Bc3F949194f74a79E94617bc7F`
-- InfinityPool ZEAL: `0x1E7748BA1d372186a322E7CfaAB1306f19FfB897`
-- InfinityPool NACHO: `0x0d4f07811718C0eE57EA2FCDb844c3585ae0F315`
-- InfinityPool KASPER: `0xa1074f1cD056862ebA654344518aa8c6DE0afE74`
-- WKAS: `0x2c2Ae87Ba178F48637acAe54B87c3924F544a83e`
+---
 
 ## Getting Started
 
-### 1. Install dependencies
+### Prerequisites
+
+- Node.js 20+
+- A WalletConnect project ID — [cloud.walletconnect.com](https://cloud.walletconnect.com)
+- An Anthropic API key — [console.anthropic.com](https://console.anthropic.com)
+- A Supabase project — [supabase.com](https://supabase.com)
+
+### Installation
 
 ```bash
+git clone https://github.com/your-org/KasAgentV2.git
+cd KasAgentV2
 npm install
 ```
 
-### 2. Create local environment variables
+### Environment Variables
 
-Copy `.env.local.example` to `.env.local` and fill in the required values:
-
-```bash
-cp .env.local.example .env.local
-# PowerShell
-copy .env.local.example .env.local
-```
-
-Required variables:
+Copy `.env.local.example` to `.env.local` and fill in your values:
 
 ```env
-NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
-ANTHROPIC_API_KEY=your_anthropic_api_key
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+# Wallet
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
+
+# AI
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Database
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# Auth (must be 32+ characters)
+JWT_SECRET=your_super_secret_jwt_key_at_least_32_chars
+
+# RPC (optional — defaults to Kasplex mainnet)
+# NEXT_PUBLIC_RPC_URL=https://evmrpc.kasplex.org
+# NEXT_PUBLIC_RPC_URL_FALLBACK=https://your-fallback-rpc.com
 ```
 
-### 3. Run the app
+### Development
 
 ```bash
-npm run dev
+npm run dev       # Start with Turbopack (fast HMR)
+npm run build     # Production build
+npm start         # Start production server
+npm run lint      # Run ESLint
+npm run benchmark # Benchmark RPC call count per tool
 ```
 
-Open `http://localhost:3000`.
-
-### 4. Connect a wallet
-
-Use a wallet supported by RainbowKit, then switch to Kasplex L2 if prompted.
-
-## Available Scripts
-
-- `npm run dev` - start the local development server
-- `npm run build` - build the production app
-- `npm run start` - run the production build
-- `npm run lint` - run ESLint
+---
 
 ## Project Structure
 
-```text
-app/
-  api/chat/route.ts                AI chat endpoint
-  api/conversations/route.ts       list conversations (GET)
-  api/conversations/[id]/route.ts  load/delete conversation (GET/DELETE)
-  api/conversations/save/route.ts  create or update conversation (POST)
-  page.tsx                         main application shell
-  providers.tsx                    wagmi, query, and RainbowKit providers
-components/
-  chat/                            chat UI, message rendering, action cards
-  header/                          app header and network status
-  sidebar/
-    PortfolioSidebar.tsx           tabbed sidebar (Chats | Portfolio)
-    ConversationList.tsx           conversation list grouped by time
-config/
-  chains.ts                        Kasplex L2 chain definition
-  contracts.ts                     ZealousSwap contract addresses
-  tokens.ts                        KAS_NATIVE constant, Token interface, TOKEN_LOGOS map
-hooks/
-  usePortfolio.ts                  aggregated wallet portfolio state
-  useConversations.ts              conversation CRUD, sidebar tab state, chatLoadKey
-  useTokenRegistry.ts              client-side dynamic token discovery from Factory pairs
-  use*.ts                          on-chain data hooks
-lib/
-  supabase.ts                      server-side Supabase client (service role key)
-  token-registry.ts                server-side token discovery (5-min cache, used by AI tools)
-  viem-client.ts                   shared viem public client instance
-lib/ai/
-  system-prompt.ts                 model instructions and wallet context (async, uses token registry)
-  tools/                           AI tool modules by domain
+```
+├── app/                    # Next.js App Router
+│   ├── (app)/              # Main routes (/ and /c/[id])
+│   ├── api/                # API routes (auth, chat, conversations, feed)
+│   ├── layout.tsx          # Root layout + providers
+│   └── globals.css         # Tailwind 4 + dark theme
+│
+├── components/             # React components
+│   ├── chat/               # Chat UI + 24 tool output cards
+│   ├── feed/               # Proactive insight cards
+│   ├── shell/              # AppShell, LeftRail, PortfolioSlideOut
+│   └── sidebar/            # ConversationList, PortfolioPanel
+│
+├── config/                 # Configuration
+│   ├── contracts.ts        # Smart contract addresses
+│   ├── protocols.ts        # Protocol registry (ZealousSwap, KrokoSwap, KaspaCom)
+│   ├── chains.ts           # Kasplex L2 chain definition
+│   ├── wagmi.ts            # Wagmi + RainbowKit config
+│   └── abis/               # Contract ABIs (14 files, all parseAbi)
+│
+├── hooks/                  # React hooks (16 files)
+│   ├── usePortfolio.ts     # Master portfolio aggregator
+│   ├── useCardExecution.ts # Multi-step transaction lifecycle
+│   └── ...                 # Balance, LP, farm, staking, conversations hooks
+│
+├── lib/                    # Core utilities + AI system
+│   ├── auth.ts             # SIWE + JWT cryptography
+│   ├── viem-client.ts      # Singleton viem PublicClient
+│   ├── format.ts           # Token/price/time formatting
+│   ├── token-registry.ts   # On-chain token/pair discovery + cache
+│   ├── ai/                 # System prompt, tool types, serializers
+│   │   └── tools/          # 23 AI tools across 4 protocol modules
+│   └── db/queries.ts       # Conversation + message CRUD
+│
+├── stores/ui.ts            # Zustand store (panel open/close state)
+└── scripts/benchmark-rpc.ts # Verify multicall RPC optimization
 ```
 
-## AI Tooling
+---
 
-The chat route in `app/api/chat/route.ts` streams responses from Anthropic and exposes a modular tool layer from `lib/ai/tools/`.
+## Authentication
 
-Current tool domains:
+Authentication uses [Sign-In With Ethereum](https://eips.ethereum.org/EIPS/eip-4361) with JWT cookies:
 
-- `swap` — multi-hop routing through WKAS when no direct pair exists
-- `liquidity`
-- `farms`
-- `staking`
-- `yield`
-- `history`
+1. User connects wallet via RainbowKit
+2. App requests a nonce from `/api/auth/nonce`
+3. User signs a SIWE message in their wallet
+4. App verifies the signature and issues a 7-day httpOnly JWT cookie
+5. All API routes authenticate via the cookie — no wallet address in request bodies
 
-Token resolution in AI tools is fully dynamic — symbols and decimals are looked up from the on-chain registry (`lib/token-registry.ts`) at execution time, so new tokens listed on ZealousSwap are automatically supported.
+Security properties: httpOnly cookies (XSS-proof), domain + chain ID validation, atomic nonce deletion (replay-proof), per-wallet rate limiting (30 req/15 min).
 
-The UI renders tool outputs as dedicated cards instead of flattening everything into plain text. That is a core product decision from the PRD.
+---
 
-## Product Direction
+## AI Tools
 
-KasAgent is being built in phases:
+23 tools organized by protocol:
 
-1. AI DeFi copilot on Kasplex L2
-2. AI wallet agent with user-defined safety policies
-3. Multi-chain expansion across the Kaspa ecosystem
+| Protocol | Tools |
+|----------|-------|
+| ZealousSwap | `zealous_getSwapQuote`, `zealous_prepareSwap`, `zealous_getPoolReserves`, `zealous_prepareAddLiquidity`, `zealous_prepareRemoveLiquidity`, `zealous_getActiveFarms`, `zealous_prepareFarmStake`, `zealous_prepareFarmUnstake`, `zealous_getInfinityPoolRates`, `zealous_prepareInfinityStake`, `zealous_prepareInfinityUnstake`, `zealous_listAllPairs`, `zealous_discoverYieldOpportunities`, `zealous_getMembershipStatus` |
+| KrokoSwap | `kroko_getSwapQuote`, `kroko_prepareSwap` |
+| KaspaCom | `kaspacom_getSwapQuote`, `kaspacom_prepareSwap` |
+| Cross-DEX | `compareSwapQuotes`, `planStrategy` |
+| Utility | `getTokenPrice`, `getTransactionHistory`, `spyOnWallet` |
 
-This repository is the Phase 1 foundation.
+### Adding a New Protocol
 
-## Safety Notes
+1. Add entry to `config/protocols.ts`
+2. Create tool module in `lib/ai/tools/{protocol}/`
+3. Add card components in `components/chat/cards/`
+4. Register cards in `lib/ui/tool-card-registry.tsx`
 
-- KasAgent is non-custodial
-- Users sign transactions in their own wallet
-- The product is intended as an informational and execution-assist tool, not financial advice
+No changes to shared infrastructure needed.
 
-## Reference
+---
 
-- Product requirements: [PRD.md](./PRD.md)
+## Protocols
 
+### ZealousSwap
+Full-featured AMM DEX. Swap fee: 0.3% (0.2% with discount via Membership, xZEAL staking, or NFT staking). Supports liquidity provision, MasterChef farms (ZEAL emissions), and InfinityPool single-sided staking for ZEAL, NACHO, and KASPER.
 
-tldr:
-What it is: An AI-powered DeFi copilot for the Kasplex L2 blockchain. Users connect their EVM wallet and interact with ZealousSwap (a DEX) through natural language chat.
+### KrokoSwap
+Dual-AMM with Uniswap V2 + V3 pools. Uses a Universal Router for optimal cross-pool routing and Permit2 for approvals. Quotes and calldata served via REST API.
 
-  Core capabilities:
-  - Wallet-connected chat interface backed by Anthropic Claude with tool calls
-  - Portfolio aggregation — balances, LP positions, farm positions, InfinityPool staking
-  - AI can prepare/execute swaps, liquidity ops, farm staking, and InfinityPool staking via structured action cards
-  - Multi-hop swap routing (direct pair → WKAS intermediary fallback)
-  - Dynamic on-chain token discovery from Factory pairs (no hardcoded token list)
-  - Conversation persistence via Supabase, with a sidebar for browsing past chats
-  - Non-custodial — all transaction signing happens in the user's wallet
+### KaspaCom
+Simple Uniswap V2 fork with a fixed 1% swap fee. Swap-only — no farms or staking.
 
-  Tech stack: Next.js 16 + React 19 + TypeScript, wagmi/viem/RainbowKit, Tailwind CSS 4, Vercel AI SDK + Anthropic Claude, Supabase Postgres
+---
 
-  Current state: Phase 1 MVP on Kasplex L2 mainnet (chain ID 202555), clean git status on master.
+## Database
+
+Supabase PostgreSQL with row-level security on all tables. Tables:
+
+| Table | Purpose |
+|-------|---------|
+| `conversations` | Chat conversations per wallet |
+| `messages` | Message history with serialized tool parts |
+| `execution_states` | Transaction execution state per tool call |
+| `auth_sessions` | SIWE nonce storage (10-min TTL) |
+| `rate_limits` | Per-wallet request rate tracking |
+| `feed_cache` | Cached portfolio insights (2-min TTL) |
+
+---
+
+## RPC Optimization
+
+All contract reads use Multicall3 batching. The benchmark script verifies expected RPC counts:
+
+```bash
+npm run benchmark
+```
+
+| Operation | Max RPCs |
+|-----------|----------|
+| Token discovery (warm cache) | 0 |
+| Yield discovery | 2 |
+| InfinityPool rates | 1 |
+| Active farms | 2 |
+| Token price | 2 |
+
+---
+
+## Deep Documentation
+
+See [`research.md`](./research.md) for a complete deep-dive — every file, every connection, all architectural decisions explained.

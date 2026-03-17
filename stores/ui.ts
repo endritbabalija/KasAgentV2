@@ -40,3 +40,5 @@ export const useUIStore = create<UIState>((set) => ({
 
 export const usePortfolioPanel = () => useUIStore((s) => s.portfolioPanel);
 export const useLeftRail = () => useUIStore((s) => s.leftRail);
+export const useAnyPanelOpen = () =>
+  useUIStore((s) => s.portfolioPanel.isOpen || s.leftRail.isOpen);

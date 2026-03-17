@@ -29,18 +29,7 @@ export function LeftRail() {
   }, []);
 
   // Extract active conversation ID from URL
-  const activeConversationId = pathname.startsWith("/c/")
-    ? pathname.split("/c/")[1]
-    : null;
-
-  // Lock body scroll when mobile drawer is open
-  useEffect(() => {
-    if (!leftRail.isOpen) return;
-    const isMobile = window.innerWidth < 768;
-    if (!isMobile) return;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
-  }, [leftRail.isOpen]);
+  const activeConversationId = pathname.match(/^\/c\/([^/]+)/)?.[1] ?? null;
 
   const handleSelectConversation = (id: string) => {
     router.push(`/c/${id}`);

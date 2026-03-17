@@ -73,7 +73,7 @@ export function KrokoSwapExecutionCard({ data, toolCallId, executionState }: { d
   const { status, currentStepLabel, isLoading, errorMsg, txHash, handleExecute, handleRetry, handleCancel } =
     useCardExecution({ steps, toolCallId, executionState });
 
-  if (status === "cancelled") return <CancelledState />;
+  if (status === "cancelled") return <CancelledState label="KrokoSwap" />;
 
   const approvalCount =
     (data.needsTokenApproval && !data.isNativeIn ? 1 : 0) +

@@ -164,7 +164,7 @@ export function ChatContainer({
 
   const isLoading = status === "submitted" || status === "streaming";
   const isWaiting = status === "submitted";
-  const hasMessages = messages.length > 0;
+  const hasMessages = messages.length > 0 && portfolio.isConnected;
 
   const handleSuggestionClick = (suggestion: string) => {
     onFirstSubmit?.();

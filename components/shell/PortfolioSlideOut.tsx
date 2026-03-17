@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { X } from "lucide-react";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useInfinityPoolData } from "@/hooks/useInfinityPoolData";
@@ -11,15 +10,6 @@ export function PortfolioSlideOut() {
   const portfolio = usePortfolio();
   const { pools } = useInfinityPoolData();
   const portfolioPanel = usePortfolioPanel();
-
-  // Lock body scroll when open on mobile
-  useEffect(() => {
-    if (!portfolioPanel.isOpen) return;
-    const isMobile = window.innerWidth < 768;
-    if (!isMobile) return;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
-  }, [portfolioPanel.isOpen]);
 
   return (
     <>

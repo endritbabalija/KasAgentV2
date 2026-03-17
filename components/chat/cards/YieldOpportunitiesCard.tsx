@@ -70,7 +70,7 @@ function OpportunityRow({ opp }: { opp: YieldOpportunity }) {
 }
 
 export function YieldOpportunitiesCard({ data }: { data: YieldOpportunitiesResult }) {
-  const prices = data.tokenPricesInKas;
+  const prices = data.tokenPricesInKas ?? {};
   const priceEntries = Object.entries(prices).filter(([sym]) => sym !== "KAS" && sym !== "WKAS");
 
   return (

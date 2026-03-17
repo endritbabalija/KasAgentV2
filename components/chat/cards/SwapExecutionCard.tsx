@@ -70,7 +70,7 @@ export function SwapExecutionCard({ data, toolCallId, executionState }: { data: 
   const { status, currentStepLabel, isLoading, errorMsg, txHash, handleExecute, handleRetry, handleCancel } =
     useCardExecution({ steps, toolCallId, executionState });
 
-  if (status === "cancelled") return <CancelledState />;
+  if (status === "cancelled") return <CancelledState label="Swap" />;
 
   return (
     <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">

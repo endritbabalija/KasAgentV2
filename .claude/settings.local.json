@@ -55,7 +55,8 @@
       "Bash(ls app/\\\\\\(app\\\\\\)/)",
       "Bash(ls -la C:/Users/endri/Documents/KasAgentV2/lib/db/queries.ts C:/Users/endri/Documents/KasAgentV2/lib/auth-server.ts \"C:/Users/endri/Documents/KasAgentV2/app/\\(app\\)/page.tsx\" \"C:/Users/endri/Documents/KasAgentV2/app/\\(app\\)/c/[id]/page.tsx\" C:/Users/endri/Documents/KasAgentV2/components/chat/Chat.tsx)",
       "Bash(ls \"C:/Users/endri/Documents/KasAgentV2/app/\\(app\\)/[[...path]]\")",
-      "Bash(test -f \"C:/Users/endri/Documents/KasAgentV2/app/\\(app\\)/[[...path]]/page.tsx\")"
+      "Bash(test -f \"C:/Users/endri/Documents/KasAgentV2/app/\\(app\\)/[[...path]]/page.tsx\")",
+      "Bash(find \"C:\\\\Users\\\\endri\\\\documents\\\\KasAgentV2/app/\\(app\\)\" -type f -name \"*.tsx\" -o -name \"*.ts\")"
     ]
   }
 }

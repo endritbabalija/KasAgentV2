@@ -1,17 +1,28 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useEffect } from "react";
 import { useAccount } from "wagmi";
 import { useReconnectOnFocus } from "@/hooks/useReconnectOnFocus";
 import { useAuth } from "@/lib/auth-provider";
 import { AppHeader } from "@/components/header/AppHeader";
 import { LeftRail } from "./LeftRail";
 import { PortfolioSlideOut } from "./PortfolioSlideOut";
+import { useAnyPanelOpen } from "@/stores/ui";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   useReconnectOnFocus();
-  const { isConnected, address } = useAccount();
+  const { isConnected } = useAccount();
   const auth = useAuth();
+  const anyPanelOpen = useAnyPanelOpen();
+
+  // Centralized body overflow lock for mobile panels
+  useEffect(() => {
+    if (!anyPanelOpen) return;
+    const isMobile = window.innerWidth < 768;
+    if (!isMobile) return;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, [anyPanelOpen]);
 
   return (
     <div className="h-dvh flex flex-col bg-[#0a0a0a] text-zinc-100 overflow-hidden">
@@ -26,7 +37,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
           {(!isConnected || auth.status !== "loading") && (
-            <Fragment key={address ?? "guest"}>
+            <Fragment key={isConnected ? "connected" : "guest"}>
               {children}
             </Fragment>
           )}
