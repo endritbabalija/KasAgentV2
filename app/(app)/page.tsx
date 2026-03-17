@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { Chat } from "@/components/chat/Chat";
 
-export default function NewChatPage() {
+export default async function NewChatPage() {
+  await cookies(); // opt out of static caching — ensures fresh UUID on every navigation
   const id = crypto.randomUUID();
-  return <Chat id={id} initialMessages={[]} />;
+  return <Chat key={id} id={id} initialMessages={[]} />;
 }

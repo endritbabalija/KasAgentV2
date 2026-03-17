@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useMemo } from "react";
-import type { UIMessage } from "ai";
+import type { ChatMessage } from "@/lib/types";
 import { parseToolPart } from "@/lib/ui/parse-tool-part";
-import { ChatMessage } from "./ChatMessage";
+import { ChatMessage as ChatMessageComponent } from "./ChatMessage";
 import { QuickActions } from "./QuickActions";
 import { getQuickActions, type QuickAction } from "@/lib/ai/quick-actions";
 
 interface MessageListProps {
-  messages: UIMessage[];
+  messages: ChatMessage[];
   isWaiting: boolean;
   isStreaming: boolean;
   error: Error | undefined;
@@ -76,7 +76,7 @@ export function MessageList({
           message.role === "assistant" &&
           i === messages.length - 1;
         return (
-          <ChatMessage
+          <ChatMessageComponent
             key={`${message.id}-${i}`}
             message={message}
             isLastAssistant={isLastAssistant}

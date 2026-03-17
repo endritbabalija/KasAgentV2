@@ -18,6 +18,7 @@ export default async function ConversationPage({
 
   return (
     <Chat
+      key={id}
       id={id}
       initialMessages={data.messages}
       initialExecutionStates={data.executionStates}

@@ -51,6 +51,7 @@ export function LeftRail() {
 
   const handleNewChat = () => {
     router.push("/");
+    router.refresh();
     if (window.innerWidth < 768) {
       leftRail.close();
     }
@@ -61,6 +62,7 @@ export function LeftRail() {
     // If deleting the active conversation, go home
     if (activeConversationId === id) {
       router.push("/");
+      router.refresh();
     }
   };
 

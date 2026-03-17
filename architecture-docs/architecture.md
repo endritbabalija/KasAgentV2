@@ -1,6 +1,6 @@
 # KasAgent Architecture
 
-> Last updated: 2026-03-17
+> Last updated: 2026-03-16
 > Codebase: Next.js 16 + React 19 + wagmi 2 + viem 2 + AI SDK (Anthropic Claude)
 
 KasAgent is a non-custodial AI DeFi copilot for Kasplex L2. Users chat with an AI agent that reads on-chain data, compares DEXes, and prepares transactions — the user signs everything in their own wallet.
@@ -27,13 +27,12 @@ User <-> App Shell (Feed + Canvas) <-> /api/chat <-> Claude (Anthropic)
 **Data flow:**
 1. User connects wallet → signs SIWE message → server verifies → sets JWT cookie
 2. User sends a message via the chat UI
-3. Frontend sends `{ conversationId, message, portfolio, infinityPools }` to `/api/chat` (wallet from cookie, only last message — not full history)
-4. Server creates conversation if new, saves user message to DB, loads full history from DB
-5. Server builds a 3-block system prompt (identity, protocol knowledge, wallet context)
-6. Claude processes the message and calls tools as needed
-7. Tool results stream back as structured data; on stream finish, assistant response is saved to DB
-8. `ToolPartRenderer` maps each tool result to a card component (via `tool-card-registry`)
-9. Execution cards let the user approve and sign transactions via wagmi/RainbowKit
+3. Frontend passes message + serialized portfolio to `/api/chat` (wallet from cookie)
+4. Server builds a 3-block system prompt (identity, protocol knowledge, wallet context)
+5. Claude processes the message and calls tools as needed
+6. Tool results stream back as structured data
+7. `ToolPartRenderer` maps each tool result to a card component (via `tool-card-registry`)
+8. Execution cards let the user approve and sign transactions via wagmi/RainbowKit
 
 ---
 
@@ -70,8 +69,8 @@ app/
       nonce/route.ts            # POST — generate SIWE nonce
       verify/route.ts           # POST — verify signature, set JWT cookie
       signout/route.ts          # POST — clear cookie
-    chat/route.ts               # POST — AI chat streaming + server-side persistence
-    conversations/              # Conversation list + delete (GET list, DELETE by ID)
+    chat/route.ts               # POST — AI chat streaming
+    conversations/              # Conversation CRUD
     execution-states/           # Transaction state persistence
     feed/route.ts               # POST — feed insights (Supabase-cached)
 ```
@@ -84,9 +83,7 @@ app/
 |-----------|----------|---------|
 | `AppShell` | `components/shell/AppShell.tsx` | Layout controller: portfolio, pools, auth, conversations, panel state |
 | `AppContext` | `components/shell/AppContext.tsx` | Shared context — no prop drilling through routes |
-| `LeftRail` | `components/shell/LeftRail.tsx` | Conversation list, new chat button. Tracks URL via `usePathname()` + custom `pushstate` event |
-| `Chat` | `components/chat/Chat.tsx` | Client wrapper: feed state, `history.pushState` URL management, `popstate` handler, sidebar refresh via query invalidation |
-| `ChatContainer` | `components/chat/ChatContainer.tsx` | `useChat` hook, message state, `prepareSendMessagesRequest` transport. Zero persistence logic |
+| `LeftRail` | `components/shell/LeftRail.tsx` | Conversation list, new chat button. Desktop: always visible. Mobile: overlay drawer |
 | `PortfolioSlideOut` | `components/shell/PortfolioSlideOut.tsx` | Right-side portfolio panel, triggered by header button |
 | `PortfolioPanel` | `components/sidebar/PortfolioPanel.tsx` | Portfolio display: balances, LPs, farms, staking, pool rates |
 | `AppHeader` | `components/header/AppHeader.tsx` | Uses AppContext. Logo, portfolio toggle, wallet connect |
@@ -118,8 +115,7 @@ KasAgentV2/
 │   │   ├── LeftRail.tsx
 │   │   └── PortfolioSlideOut.tsx
 │   ├── chat/
-│   │   ├── Chat.tsx              # Client wrapper: feed, URL (pushState), sidebar refresh
-│   │   ├── ChatContainer.tsx     # useChat hook, prepareSendMessagesRequest transport
+│   │   ├── ChatContainer.tsx     # useChat hook, message state, ~200 lines
 │   │   ├── ChatInput.tsx         # User input
 │   │   ├── ChatMessage.tsx       # Renders text + tool parts
 │   │   ├── MessageList.tsx       # Scroll container + quick actions
@@ -151,8 +147,9 @@ KasAgentV2/
 │   ├── useWalletAuth.ts          # SIWE sign-in flow, auto-sign on connect
 │   ├── usePortfolio.ts           # Aggregates all position hooks
 │   ├── useCardExecution.ts       # Shared tx execution lifecycle for all cards
-│   ├── useExecutionPersistence.ts # Execution state management + DB persistence (no pending queue — ID always known)
+│   ├── useExecutionPersistence.ts # Execution state management + DB persistence
 │   ├── useStrategyAutoContinue.ts # Auto-continue after successful strategy steps
+│   ├── useConversationLoader.ts  # Load single conversation by ID
 │   ├── useFeedInsights.ts        # Client-side feed insight fetching
 │   ├── useAllPairs.ts            # Multi-factory pair discovery
 │   ├── useTokenRegistry.ts       # Client-side token list
@@ -162,14 +159,11 @@ KasAgentV2/
 │   ├── useStakingPositions.ts    # InfinityPool xToken balances
 │   ├── useActiveFarms.ts         # Farm pool metadata
 │   ├── useInfinityPoolData.ts    # Pool exchange rates
-│   └── useConversations.ts       # Conversation list + delete (no save — persistence is server-side)
+│   └── useConversations.ts       # ConversationSummary type definition
 │
 ├── lib/
 │   ├── auth.ts                   # JWT sign/verify, SIWE verification, nonce generation
-│   ├── auth-server.ts            # getServerWallet() — reads JWT cookie in server components
 │   ├── auth-middleware.ts        # requireAuth() — reads JWT cookie, returns wallet
-│   ├── db/
-│   │   └── queries.ts            # Pure DB functions: createConversation, saveMessage, getMessages, etc.
 │   ├── viem-client.ts            # Single PublicClient instance
 │   ├── token-registry.ts         # Server-side token discovery (5-min cache)
 │   ├── kroko-api.ts              # KrokoSwap REST API client
@@ -377,7 +371,7 @@ User: "Farm 5 KAS"
 **Key implementation details:**
 - Strategy helpers extracted to `lib/ui/strategy-helpers.ts`
 - `useStrategyAutoContinue` hook watches `portfolioIsFetching` — waits for refetch to complete before sending continuation (prevents stale balance reads)
-- `useExecutionPersistence` hook handles DB persistence of execution states (no pending queue — conversation ID always known at mount)
+- `useExecutionPersistence` hook handles DB persistence of execution states
 - Guards: only fires on `"success"`, only when chat is `"ready"`, skips if all steps done
 - Timer cleanup on unmount prevents stale sends
 
@@ -395,39 +389,6 @@ User: "Farm 5 KAS"
 | `rate_limits` | Per-wallet rate limit counters | Per-wallet policies |
 | `auth_sessions` | SIWE nonces (wallet, nonce, expiry) | Service role only |
 | `feed_cache` | Feed insight cache (wallet, insights JSON, expiry) | Per-wallet policies |
-
-### Chat Persistence Architecture
-
-**Single persistence point:** `/api/chat` is the only place messages are saved. The client has zero persistence logic.
-
-**Server-side save-during-streaming** (not client-side save-after-streaming):
-1. Client sends `{ conversationId, message, portfolio, infinityPools, trigger }` — only the last user message, not the full history
-2. Server creates conversation if new (upsert), verifies ownership if existing
-3. Server saves user message to DB **before** streaming
-4. Server loads full message history from DB → passes to Claude
-5. `onFinish`: saves assistant response to DB, updates conversation timestamp
-6. `consumeStream()` ensures stream completes even on client disconnect
-
-**Conversation ID lifecycle:**
-- Generated server-side via `crypto.randomUUID()` in the `/` page server component
-- Passed to `<Chat id={id} />` → `<ChatContainer conversationId={id} />`
-- URL updated client-side via `history.pushState('/c/{id}')` on first message (no navigation/remount)
-- Sidebar highlight kept in sync via custom `pushstate` event → `LeftRail` listener
-
-**Regenerate flow:**
-- `prepareSendMessagesRequest` forwards `trigger: 'regenerate-message'` to the server
-- Server skips saving the user message (already in DB), deletes old assistant response(s), then re-streams
-
-**DB query layer:** `lib/db/queries.ts` — pure async functions used by both API routes and server components:
-- `createConversation()` (upsert, handles race conditions)
-- `saveMessage()`, `getMessages()`, `getConversationWithMessages()`
-- `getConversationOwner()` (single query replaces exists + ownership check)
-- `deleteLastAssistantMessages()` (for regenerate)
-- `generateTitle()` (from first user message text)
-
-**Server component data loading:**
-- `/c/[id]/page.tsx` calls `getServerWallet()` (reads JWT via `cookies()`) → `getConversationWithMessages()` → renders `<Chat>` with `initialMessages`
-- No client-side loading spinner — messages are server-rendered
 
 ### Rate Limiting
 

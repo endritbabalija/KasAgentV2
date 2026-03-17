@@ -120,6 +120,7 @@ export function ChatContainer({
   });
 
   const { messages, status, error, stop, sendMessage, regenerate } = useChat({
+    id: conversationId,
     transport,
     messages: initialMessages,
     onFinish: () => {

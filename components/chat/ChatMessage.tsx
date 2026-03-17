@@ -1,14 +1,14 @@
 "use client";
 
 import { memo } from "react";
-import type { UIMessage } from "ai";
+import type { ChatMessage as ChatMessageType } from "@/lib/types";
 import { parseToolPart } from "@/lib/ui/parse-tool-part";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { AnimatedMarkdown } from "./AnimatedMarkdown";
 import { ToolPartRenderer } from "./ToolPartRenderer";
 
 interface ChatMessageProps {
-  message: UIMessage;
+  message: ChatMessageType;
   isLastAssistant: boolean;
   isStreaming: boolean;
 }

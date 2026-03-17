@@ -17,3 +17,21 @@ export const aiTools = {
   ...oracleTools,
   ...strategyTools,
 };
+
+// Context-aware tools factory (for future use with dataStream)
+// Activate when converting spy/strategy/yield to factory pattern:
+//
+// import type { UIMessageStreamWriter } from "ai";
+//
+// export function getTools({ dataStream }: { dataStream: UIMessageStreamWriter }) {
+//   return {
+//     ...zealousTools,
+//     ...krokoTools,
+//     ...kaspacomTools,
+//     ...compareTools,
+//     ...historyTools,
+//     ...createSpyTools({ dataStream }),
+//     ...oracleTools,
+//     ...createStrategyTools({ dataStream }),
+//   };
+// }

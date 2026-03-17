@@ -43,6 +43,14 @@ export function Chat({
   // URL management — pushState on first submit
   const urlUpdatedRef = useRef(initialMessages.length > 0); // already on /c/[id] if has messages
 
+  // Ensure browser URL matches route on mount (undo leftover pushState from previous chat)
+  useEffect(() => {
+    if (initialMessages.length === 0 && window.location.pathname !== "/") {
+      window.history.replaceState(null, "", "/");
+      window.dispatchEvent(new Event("pushstate"));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount only
+
   const handleFirstSubmit = useCallback(() => {
     if (!urlUpdatedRef.current) {
       window.history.pushState(null, "", `/c/${id}`);
