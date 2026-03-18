@@ -4,7 +4,7 @@ import { serverEnv } from "./env";
 
 const JWT_SECRET = new TextEncoder().encode(serverEnv.JWT_SECRET);
 const JWT_ISSUER = "kasagent";
-const JWT_EXPIRY = "7d";
+const JWT_EXPIRY = "3d";
 
 /** Expected chain ID for Kasplex L2. */
 export const EXPECTED_CHAIN_ID = 202555;

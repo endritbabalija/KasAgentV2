@@ -10,20 +10,16 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useSignMessage, useDisconnect } from "wagmi";
 import { SiweMessage } from "siwe";
-import {
-  createAuthenticationAdapter,
-  RainbowKitAuthenticationProvider,
-  RainbowKitProvider,
-  darkTheme,
-  type AuthenticationStatus,
-} from "@rainbow-me/rainbowkit";
+import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
 
 // --- AuthContext: exposed to the rest of the app ---
 
+type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+
 interface AuthContextValue {
-  status: AuthenticationStatus;
+  status: AuthStatus;
   isAuthenticated: boolean;
   handleSessionExpired: () => void;
 }
@@ -34,118 +30,119 @@ export function useAuth(): AuthContextValue {
   return useContext(AuthContext);
 }
 
-// --- AuthProvider: wraps RainbowKitAuthenticationProvider + RainbowKitProvider ---
+// --- AuthProvider: auto-signs SIWE immediately after wallet connects ---
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { address, isReconnecting } = useAccount();
-  const [authStatus, setAuthStatus] =
-    useState<AuthenticationStatus>("loading");
+  const { address, chainId, isReconnecting } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const { disconnect } = useDisconnect();
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
 
-  // Ref for getNonce(): captures current address since RainbowKit's
-  // getNonce takes no arguments, but our nonce endpoint needs the address
+  // All mutable state lives in refs so async flows never go stale
+  const isSigningRef = useRef(false);
+  const checkedAddressRef = useRef<string | null>(null);
   const addressRef = useRef(address);
-  useLayoutEffect(() => { addressRef.current = address; });
+  const chainIdRef = useRef(chainId);
+  const signMessageRef = useRef(signMessageAsync);
+  const disconnectRef = useRef(disconnect);
 
-  // --- One-time session check on mount ---
-  // hasCheckedSession is only set to true when we actually check with an address,
-  // NOT when we see !address (which could be the hydration gap before wagmi reconnects)
-  const hasCheckedSession = useRef(false);
+  useLayoutEffect(() => {
+    addressRef.current = address;
+    chainIdRef.current = chainId;
+    signMessageRef.current = signMessageAsync;
+    disconnectRef.current = disconnect;
+  });
+
+  // --- Single sign flow: session check → SIWE sign ---
+
+  async function startAuthFlow(addr: string) {
+    // Guard: one sign flow at a time
+    if (isSigningRef.current) return;
+    isSigningRef.current = true;
+
+    try {
+      // 1. Check existing session
+      const meRes = await fetch("/api/auth/me");
+      if (meRes.ok) {
+        const data = await meRes.json();
+        if (data.wallet?.toLowerCase() === addr.toLowerCase()) {
+          setAuthStatus("authenticated");
+          return;
+        }
+      }
+
+      // 2. No valid session — get nonce
+      const nonceRes = await fetch("/api/auth/nonce", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: addr }),
+      });
+      if (!nonceRes.ok) throw new Error("Failed to get nonce");
+      const { nonce } = await nonceRes.json();
+
+      // 3. Create SIWE message + prompt wallet signature directly
+      const message = new SiweMessage({
+        domain: window.location.host,
+        address: addr,
+        statement: "Sign in to KasAgent",
+        uri: window.location.origin,
+        version: "1",
+        chainId: chainIdRef.current ?? 202555,
+        nonce,
+      }).prepareMessage();
+
+      const signature = await signMessageRef.current({ message });
+
+      // 4. Verify on server
+      const verifyRes = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, signature }),
+      });
+
+      if (verifyRes.ok) {
+        setAuthStatus("authenticated");
+      } else {
+        disconnectRef.current();
+        setAuthStatus("unauthenticated");
+      }
+    } catch {
+      // User rejected signature or network error — disconnect cleanly
+      disconnectRef.current();
+      checkedAddressRef.current = null;
+      setAuthStatus("unauthenticated");
+    } finally {
+      isSigningRef.current = false;
+    }
+  }
+
+  // --- Trigger on wallet connect (address change only) ---
 
   useEffect(() => {
-    // During reconnection, stay in loading state and wait
     if (isReconnecting) return;
-    if (hasCheckedSession.current) return;
 
     if (!address) {
-      // No wallet connected (cookieStorage ensures address is immediately
-      // available if a wallet was previously connected — no hydration gap)
-      hasCheckedSession.current = true;
+      checkedAddressRef.current = null;
       setAuthStatus("unauthenticated");
       return;
     }
 
-    // Wallet connected — check session immediately
-    hasCheckedSession.current = true;
+    const lower = address.toLowerCase();
+    if (checkedAddressRef.current === lower) return;
+    checkedAddressRef.current = lower;
 
-    fetch("/api/auth/me")
-      .then(async (res) => {
-        if (!res.ok) {
-          setAuthStatus("unauthenticated");
-          return;
-        }
-        const data = await res.json();
-        // Cookie wallet must match connected wallet
-        if (data.wallet?.toLowerCase() === address.toLowerCase()) {
-          setAuthStatus("authenticated");
-        } else {
-          setAuthStatus("unauthenticated");
-        }
-      })
-      .catch(() => setAuthStatus("unauthenticated"));
+    setAuthStatus("loading");
+    startAuthFlow(address);
   }, [isReconnecting, address]);
 
-  // --- 401 handler: sets status so RainbowKit shows sign-in modal ---
+  // --- 401 handler: re-triggers sign if not already in progress ---
   const handleSessionExpired = useCallback(() => {
-    setAuthStatus("unauthenticated");
+    const addr = addressRef.current;
+    if (!addr || isSigningRef.current) return;
+    checkedAddressRef.current = null;
+    setAuthStatus("loading");
+    startAuthFlow(addr);
   }, []);
-
-  // --- SIWE Authentication Adapter ---
-  /* eslint-disable react-hooks/refs -- addressRef is only read in callbacks (getNonce), never during render */
-  const adapter = useMemo(
-    () =>
-      createAuthenticationAdapter({
-        getNonce: async () => {
-          const currentAddress = addressRef.current;
-          if (!currentAddress) throw new Error("No wallet connected");
-
-          const res = await fetch("/api/auth/nonce", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address: currentAddress }),
-          });
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || "Failed to get nonce");
-          }
-          const { nonce } = await res.json();
-          return nonce;
-        },
-
-        createMessage: ({ nonce, address: addr, chainId }) => {
-          return new SiweMessage({
-            domain: window.location.host,
-            address: addr,
-            statement: "Sign in to KasAgent",
-            uri: window.location.origin,
-            version: "1",
-            chainId,
-            nonce,
-          }).prepareMessage();
-        },
-
-        verify: async ({ message, signature }) => {
-          const res = await fetch("/api/auth/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message, signature }),
-          });
-          if (res.ok) {
-            setAuthStatus("authenticated");
-            return true;
-          }
-          return false;
-        },
-
-        signOut: async () => {
-          await fetch("/api/auth/signout", { method: "POST" }).catch(
-            () => {}
-          );
-          setAuthStatus("unauthenticated");
-        },
-      }),
-    [] // Stable — uses refs for mutable data, setAuthStatus is stable
-  );
-  /* eslint-enable react-hooks/refs */
 
   // --- Context value ---
   const contextValue = useMemo<AuthContextValue>(
@@ -159,11 +156,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={contextValue}>
-      <RainbowKitAuthenticationProvider adapter={adapter} status={authStatus}>
-        <RainbowKitProvider theme={darkTheme()} initialChain={202555}>
-          {children}
-        </RainbowKitProvider>
-      </RainbowKitAuthenticationProvider>
+      <RainbowKitProvider theme={darkTheme()} initialChain={202555}>
+        {children}
+      </RainbowKitProvider>
     </AuthContext.Provider>
   );
 }

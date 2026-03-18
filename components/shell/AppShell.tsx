@@ -7,13 +7,15 @@ import { useAuth } from "@/lib/auth-provider";
 import { AppHeader } from "@/components/header/AppHeader";
 import { LeftRail } from "./LeftRail";
 import { PortfolioSlideOut } from "./PortfolioSlideOut";
-import { useAnyPanelOpen } from "@/stores/ui";
+import { useAnyPanelOpen, usePortfolioPanel, useLeftRail } from "@/stores/ui";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   useReconnectOnFocus();
   const { isConnected } = useAccount();
   const auth = useAuth();
   const anyPanelOpen = useAnyPanelOpen();
+  const portfolioPanel = usePortfolioPanel();
+  const leftRail = useLeftRail();
 
   // Centralized body overflow lock for mobile panels
   useEffect(() => {
@@ -23,6 +25,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
   }, [anyPanelOpen]);
+
+  // Escape key closes whichever panel is open (higher z-index first)
+  useEffect(() => {
+    if (!anyPanelOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        if (portfolioPanel.isOpen) portfolioPanel.close();
+        else if (leftRail.isOpen) leftRail.close();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [anyPanelOpen, portfolioPanel, leftRail]);
 
   return (
     <div className="h-dvh flex flex-col bg-[#0a0a0a] text-zinc-100 overflow-hidden">

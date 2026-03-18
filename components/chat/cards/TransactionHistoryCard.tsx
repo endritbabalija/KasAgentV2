@@ -1,6 +1,8 @@
 import type { TransactionHistoryResult, TransactionHistoryItem } from "@/lib/ai/tool-types";
 import { shortenAddress, formatDisplayAmount } from "@/lib/format";
 import { EXPLORER_URL } from "@/config/chains";
+import { ACTION_BADGE_COLORS, getTokenTextColor } from "./shared/card-colors";
+import { CardWrapper } from "./shared/CardWrapper";
 
 function timeAgo(timestamp: string): string {
   if (!timestamp) return "-";
@@ -28,29 +30,6 @@ function formatAmount(val: string): string {
   return formatDisplayAmount(val);
 }
 
-const actionBadgeColors: Record<string, string> = {
-  Swap: "bg-teal-900/40 text-teal-400",
-  "Add Liquidity": "bg-blue-900/40 text-blue-400",
-  "Remove Liquidity": "bg-blue-900/40 text-blue-400",
-  "Farm Deposit": "bg-purple-900/40 text-purple-400",
-  "Farm Withdraw": "bg-purple-900/40 text-purple-400",
-  "Farm Emergency Withdraw": "bg-purple-900/40 text-purple-400",
-  Stake: "bg-indigo-900/40 text-indigo-400",
-  Unstake: "bg-indigo-900/40 text-indigo-400",
-  Transfer: "bg-zinc-700/40 text-zinc-300",
-  Approve: "bg-zinc-700/40 text-zinc-400",
-  "Contract Call": "bg-zinc-700/40 text-zinc-400",
-  "Contract Create": "bg-zinc-700/40 text-zinc-400",
-};
-
-const tokenColors: Record<string, string> = {
-  KAS: "text-emerald-400",
-  WKAS: "text-emerald-400",
-  ZEAL: "text-blue-400",
-  NACHO: "text-orange-400",
-  KASPER: "text-purple-400",
-};
-
 function StatusDot({ status }: { status: string }) {
   const color =
     status === "confirmed"
@@ -77,7 +56,7 @@ function TokenTransfers({
           const isOutgoing = tr.from.toLowerCase() === addr;
           const sign = isOutgoing ? "-" : "+";
           const color = isOutgoing ? "text-red-400" : "text-emerald-400";
-          const tokenColor = tokenColors[tr.token.toUpperCase()] ?? "text-zinc-300";
+          const tokenColor = getTokenTextColor(tr.token);
           return (
             <div key={i} className="flex items-center gap-1 text-xs">
               <span className={`font-mono ${color}`}>
@@ -119,7 +98,7 @@ function TransactionRow({
   tx: TransactionHistoryItem;
   userAddress: string;
 }) {
-  const badgeColor = actionBadgeColors[tx.action] ?? "bg-zinc-700/40 text-zinc-400";
+  const badgeColor = ACTION_BADGE_COLORS[tx.action] ?? "bg-zinc-700/40 text-zinc-400";
 
   return (
     <tr className="border-b border-zinc-700/30 last:border-0">
@@ -182,7 +161,7 @@ export function TransactionHistoryCard({
   data: TransactionHistoryResult;
 }) {
   return (
-    <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
+    <CardWrapper>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -244,6 +223,6 @@ export function TransactionHistoryCard({
           </span>
         )}
       </div>
-    </div>
+    </CardWrapper>
   );
 }

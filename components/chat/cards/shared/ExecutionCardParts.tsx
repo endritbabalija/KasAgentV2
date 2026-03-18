@@ -4,6 +4,7 @@ import type { RiskFlag, RiskLevel, ContractInfo } from "@/lib/ai/tool-types";
 import { shortenAddress, formatDisplayAmount } from "@/lib/format";
 import { EXPLORER_URL } from "@/config/chains";
 import { useState } from "react";
+import { getTokenBadgeColor } from "./card-colors";
 
 export { shortenAddress };
 
@@ -12,20 +13,10 @@ export { formatDisplayAmount as formatAmount };
 
 // ── Token Badge ──
 
-const tokenColors: Record<string, string> = {
-  KAS: "bg-emerald-900/50 text-emerald-400",
-  WKAS: "bg-emerald-900/50 text-emerald-400",
-  ZEAL: "bg-blue-900/50 text-blue-400",
-  NACHO: "bg-orange-900/50 text-orange-400",
-  KASPER: "bg-purple-900/50 text-purple-400",
-};
-
 export function TokenBadge({ symbol }: { symbol: string }) {
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
-        tokenColors[symbol.toUpperCase()] ?? "bg-zinc-700/50 text-zinc-300"
-      }`}
+      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${getTokenBadgeColor(symbol)}`}
     >
       {symbol.toUpperCase()}
     </span>

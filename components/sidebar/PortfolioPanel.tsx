@@ -1,25 +1,31 @@
 "use client";
 
-import type { Portfolio } from "@/hooks/usePortfolio";
-import type { InfinityPoolInfo } from "@/hooks/useInfinityPoolData";
-import { formatTokenAmount } from "@/lib/format";
-import { useTokenRegistry } from "@/hooks/useTokenRegistry";
-import { RefreshCw } from "lucide-react";
+import { useState, useMemo } from "react";
+import { RefreshCw, ChevronDown } from "lucide-react";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { usePricedPortfolio, type WalletToken, type Position } from "@/hooks/usePricedPortfolio";
+import { formatTokenAmount, formatKasAmount } from "@/lib/format";
 
-interface PortfolioPanelProps {
-  portfolio: Portfolio;
-  pools: InfinityPoolInfo[];
-}
+const DUST_THRESHOLD_KAS = 0.01;
 
-export function PortfolioPanel({ portfolio, pools }: PortfolioPanelProps) {
-  const { getTokenSymbol, tokenMap } = useTokenRegistry();
-  const getTokenDecimals = (address: string): number =>
-    tokenMap.get(address.toLowerCase())?.decimals ?? 18;
+export function PortfolioPanel() {
+  const portfolio = usePricedPortfolio();
+  const [showDust, setShowDust] = useState(false);
+
+  const mainTokens = useMemo(
+    () => portfolio.walletTokens.filter((t) => t.kasVal >= DUST_THRESHOLD_KAS || t.symbol === "KAS"),
+    [portfolio.walletTokens],
+  );
+  const dustTokens = useMemo(
+    () => portfolio.walletTokens.filter((t) => t.kasVal < DUST_THRESHOLD_KAS && t.symbol !== "KAS"),
+    [portfolio.walletTokens],
+  );
 
   if (!portfolio.isConnected) {
     return (
-      <div className="text-center py-10">
+      <div className="text-center py-10 space-y-4">
         <p className="text-zinc-500 text-sm">Connect wallet to view portfolio</p>
+        <ConnectButton />
       </div>
     );
   }
@@ -41,38 +47,23 @@ export function PortfolioPanel({ portfolio, pools }: PortfolioPanelProps) {
   if (portfolio.isLoading) {
     return (
       <div className="space-y-5 animate-pulse">
-        <div>
-          <div className="h-3 w-16 bg-zinc-800 rounded mb-3" />
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <div className="h-3.5 w-12 bg-zinc-800 rounded" />
+        <div className="h-8 w-32 bg-zinc-800 rounded mb-4" />
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex justify-between">
+              <div className="h-3.5 w-14 bg-zinc-800 rounded" />
               <div className="h-3.5 w-20 bg-zinc-800 rounded" />
             </div>
-            <div className="flex justify-between">
-              <div className="h-3.5 w-14 bg-zinc-800 rounded" />
-              <div className="h-3.5 w-16 bg-zinc-800 rounded" />
-            </div>
-            <div className="flex justify-between">
-              <div className="h-3.5 w-10 bg-zinc-800 rounded" />
-              <div className="h-3.5 w-24 bg-zinc-800 rounded" />
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     );
   }
 
-  const stats = [
-    { label: "Tokens", count: portfolio.balances.length },
-    { label: "LPs", count: portfolio.lpPositions.length },
-    { label: "Farms", count: portfolio.farmPositions.length },
-    { label: "Staked", count: portfolio.stakingPositions.filter((s) => s.xTokenBalance > 0n).length },
-  ];
-
   return (
     <>
-      {/* Refresh button */}
-      <div className="flex items-center justify-between mb-3">
+      {/* Header + refresh */}
+      <div className="flex items-center justify-between mb-4">
         <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Portfolio</h3>
         <button
           onClick={() => portfolio.refetch()}
@@ -87,124 +78,133 @@ export function PortfolioPanel({ portfolio, pools }: PortfolioPanelProps) {
         </button>
       </div>
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-4 gap-2 bg-zinc-800/30 rounded-lg p-3 mb-5">
-        {stats.map((s) => (
-          <div key={s.label} className="text-center">
-            <div className="text-sm text-zinc-200 font-medium">{s.count}</div>
-            <div className="text-xs text-zinc-500">{s.label}</div>
-          </div>
-        ))}
+      {/* Total Value */}
+      <div className="mb-5">
+        <div className="text-2xl font-bold text-zinc-100 tracking-tight">
+          ~{formatKasAmount(portfolio.totalValueKas)} <span className="text-base font-normal text-zinc-500">KAS</span>
+        </div>
       </div>
 
-      {/* Token Balances */}
-      <Section title="Balances">
-        {portfolio.balances.length === 0 ? (
+      {/* Wallet Section */}
+      <Section title="Wallet">
+        {mainTokens.length === 0 ? (
           <p className="text-xs text-zinc-600">No tokens found</p>
         ) : (
           <div className="space-y-1">
-            {portfolio.balances.map((tb) => (
-              <div key={tb.symbol} className="flex items-center justify-between text-sm">
-                <span className="text-zinc-300">{tb.symbol}</span>
-                <span className="text-zinc-400 font-mono text-xs">
-                  {formatTokenAmount(tb.balance, tb.decimals)}
-                </span>
-              </div>
+            {mainTokens.map((t) => (
+              <WalletTokenRow key={t.symbol} token={t} />
+            ))}
+          </div>
+        )}
+        {dustTokens.length > 0 && (
+          <button
+            onClick={() => setShowDust(!showDust)}
+            className="flex items-center gap-1 mt-2 text-xs text-zinc-500 hover:text-zinc-400 transition-colors"
+          >
+            <ChevronDown className={`w-3 h-3 transition-transform ${showDust ? "rotate-180" : ""}`} />
+            +{dustTokens.length} dust
+          </button>
+        )}
+        {showDust && dustTokens.length > 0 && (
+          <div className="space-y-1 mt-1 opacity-60">
+            {dustTokens.map((t) => (
+              <WalletTokenRow key={t.symbol} token={t} />
             ))}
           </div>
         )}
       </Section>
 
-      {/* LP Positions */}
-      {portfolio.lpPositions.length > 0 && (
-        <Section title="LP Positions">
+      {/* Positions Section */}
+      {portfolio.positions.length > 0 && (
+        <Section title="Positions">
           <div className="space-y-2">
-            {portfolio.lpPositions.map((lp) => (
-              <div key={lp.pairAddress} className="bg-zinc-900/50 rounded-lg p-2 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-300">
-                    {getTokenSymbol(lp.token0)}/{getTokenSymbol(lp.token1)}
-                  </span>
-                  <span className="text-zinc-500 font-mono text-xs">
-                    {formatTokenAmount(lp.lpBalance, 18)}
-                  </span>
-                </div>
-                <div className="flex gap-3 text-xs text-zinc-500">
-                  <span>
-                    {getTokenSymbol(lp.token0)}: {formatTokenAmount(lp.token0Amount, getTokenDecimals(lp.token0))}
-                  </span>
-                  <span>
-                    {getTokenSymbol(lp.token1)}: {formatTokenAmount(lp.token1Amount, getTokenDecimals(lp.token1))}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Farm Positions */}
-      {portfolio.farmPositions.length > 0 && (
-        <Section title="Farms">
-          <div className="space-y-2">
-            {portfolio.farmPositions.map((fp) => (
-              <div key={fp.pid} className="bg-zinc-900/50 rounded-lg p-2 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-300">Pool #{fp.pid}</span>
-                  <span className="text-xs text-zinc-500">
-                    {fp.canWithdraw ? "Unlocked" : "Locked"}
-                  </span>
-                </div>
-                <div className="flex gap-3 text-xs text-zinc-500">
-                  <span>Staked: {formatTokenAmount(fp.stakedAmount, 18)}</span>
-                  <span>Rewards: {formatTokenAmount(fp.pendingReward, 18)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Staking Positions */}
-      {portfolio.stakingPositions.some((s) => s.xTokenBalance > 0n) && (
-        <Section title="Staking">
-          <div className="space-y-2">
-            {portfolio.stakingPositions
-              .filter((sp) => sp.xTokenBalance > 0n)
-              .map((sp) => (
-                <div key={sp.poolName} className="bg-zinc-900/50 rounded-lg p-2 space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-zinc-300">x{sp.poolName}</span>
-                    <span className="text-zinc-500 font-mono text-xs">
-                      {formatTokenAmount(sp.xTokenBalance, 18)}
-                    </span>
-                  </div>
-                  <div className="text-xs text-zinc-500">
-                    = {formatTokenAmount(sp.underlyingAmount, 18)} {sp.poolName} (
-                    {formatTokenAmount(sp.exchangeRate, 18, 6)}x)
-                  </div>
-                </div>
-              ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Infinity Pools */}
-      {pools.length > 0 && (
-        <Section title="InfinityPool Rates">
-          <div className="space-y-1">
-            {pools.map((pool) => (
-              <div key={pool.name} className="flex justify-between text-sm">
-                <span className="text-zinc-300">{pool.name}</span>
-                <span className="font-mono text-xs text-zinc-500">
-                  {formatTokenAmount(pool.exchangeRate, 18, 6)}
-                </span>
-              </div>
+            {portfolio.positions.map((pos) => (
+              <PositionCard key={pos.id} position={pos} />
             ))}
           </div>
         </Section>
       )}
     </>
+  );
+}
+
+function WalletTokenRow({ token }: { token: WalletToken }) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-zinc-300">{token.symbol}</span>
+      <div className="text-right">
+        <span className="text-zinc-200 font-mono text-xs">
+          {formatTokenAmount(token.balance, token.decimals)}
+        </span>
+        {token.symbol !== "KAS" && token.kasVal > 0 && (
+          <span className="text-zinc-500 text-xs ml-2">
+            ~{formatKasAmount(token.kasVal)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PositionCard({ position }: { position: Position }) {
+  if (position.type === "farm") return <FarmCard position={position} />;
+  if (position.type === "staking") return <StakingCard position={position} />;
+  return <LpCard position={position} />;
+}
+
+function PositionCardShell({ position, borderColor, children }: { position: Position; borderColor: string; children: React.ReactNode }) {
+  return (
+    <div className={`bg-zinc-900/50 rounded-lg p-2.5 space-y-1 border-l-2 ${borderColor}`}>
+      <div className="flex justify-between items-center">
+        <span className="text-sm text-zinc-200">{position.name}</span>
+        <span className="text-xs text-zinc-400 font-mono">~{formatKasAmount(position.kasVal)} KAS</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function FarmCard({ position }: { position: Position }) {
+  return (
+    <PositionCardShell position={position} borderColor="border-emerald-600/50">
+      <div className="flex items-center gap-2 text-xs text-zinc-500">
+        <span>Farming</span>
+        {position.apyPercent !== undefined && position.apyPercent > 0 && (
+          <span className="text-emerald-400">{position.apyPercent.toFixed(2)}% APY</span>
+        )}
+      </div>
+      {position.pendingReward !== undefined && position.pendingReward > 0n && (
+        <div className="text-xs text-amber-400/80">
+          {formatTokenAmount(position.pendingReward, position.rewardDecimals ?? 18)}{" "}
+          {position.rewardSymbol} claimable
+        </div>
+      )}
+    </PositionCardShell>
+  );
+}
+
+function StakingCard({ position }: { position: Position }) {
+  return (
+    <PositionCardShell position={position} borderColor="border-blue-600/50">
+      {position.xTokenBalance !== undefined && position.underlyingAmount !== undefined && (
+        <div className="text-xs text-zinc-500">
+          {formatTokenAmount(position.xTokenBalance, 18)} x{position.underlyingSymbol}
+          {" → "}
+          {formatTokenAmount(position.underlyingAmount, 18)} {position.underlyingSymbol}
+        </div>
+      )}
+      {position.apyPercent !== undefined && position.apyPercent > 0 && (
+        <div className="text-xs text-emerald-400">{position.apyPercent.toFixed(2)}% APY</div>
+      )}
+    </PositionCardShell>
+  );
+}
+
+function LpCard({ position }: { position: Position }) {
+  return (
+    <PositionCardShell position={position} borderColor="border-violet-600/50">
+      <div className="text-xs text-zinc-500">Idle LP (not farming)</div>
+    </PositionCardShell>
   );
 }
 

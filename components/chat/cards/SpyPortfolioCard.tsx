@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { SpyPortfolioResult } from "@/lib/ai/tool-types";
 import { shortenAddress, formatAmount } from "./shared/ExecutionCardParts";
 import { EXPLORER_URL } from "@/config/chains";
+import { CardWrapper } from "./shared/CardWrapper";
 
 function CollapsibleSection({
   title,
@@ -63,7 +64,7 @@ export function SpyPortfolioCard({ data }: { data: SpyPortfolioResult }) {
     stakingPositions.length > 0;
 
   return (
-    <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4 space-y-4">
+    <CardWrapper className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="text-xs text-zinc-500 uppercase tracking-wide">
@@ -275,6 +276,6 @@ export function SpyPortfolioCard({ data }: { data: SpyPortfolioResult }) {
           {new Date(data.fetchedAt).toLocaleString()}
         </span>
       </div>
-    </div>
+    </CardWrapper>
   );
 }

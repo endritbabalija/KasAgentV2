@@ -1,17 +1,9 @@
 "use client";
 
-import type { StrategyPlanResult, StrategyStepType } from "@/lib/ai/tool-types";
+import type { StrategyPlanResult } from "@/lib/ai/tool-types";
 import { TokenBadge } from "./shared/ExecutionCardParts";
-
-const TYPE_BADGES: Record<StrategyStepType, { label: string; color: string }> = {
-  swap: { label: "Swap", color: "bg-teal-900/50 text-teal-400" },
-  addLiquidity: { label: "Add LP", color: "bg-blue-900/50 text-blue-400" },
-  removeLiquidity: { label: "Remove LP", color: "bg-blue-900/50 text-blue-400" },
-  farmStake: { label: "Farm", color: "bg-amber-900/50 text-amber-400" },
-  farmUnstake: { label: "Unfarm", color: "bg-amber-900/50 text-amber-400" },
-  infinityStake: { label: "Stake", color: "bg-purple-900/50 text-purple-400" },
-  infinityUnstake: { label: "Unstake", color: "bg-purple-900/50 text-purple-400" },
-};
+import { STRATEGY_TYPE_BADGES } from "./shared/card-colors";
+import { CardWrapper } from "./shared/CardWrapper";
 
 function StepRow({
   step,
@@ -20,7 +12,7 @@ function StepRow({
   step: StrategyPlanResult["steps"][number];
   isLast: boolean;
 }) {
-  const badge = TYPE_BADGES[step.type] ?? { label: step.type, color: "bg-zinc-700/50 text-zinc-300" };
+  const badge = STRATEGY_TYPE_BADGES[step.type] ?? { label: step.type, color: "bg-zinc-700/50 text-zinc-300" };
 
   return (
     <div className="flex gap-3">
@@ -67,7 +59,7 @@ function StepRow({
 
 export function StrategyPlanCard({ data }: { data: StrategyPlanResult }) {
   return (
-    <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
+    <CardWrapper>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs text-zinc-500 uppercase tracking-wide">Strategy Plan</div>
@@ -98,6 +90,6 @@ export function StrategyPlanCard({ data }: { data: StrategyPlanResult }) {
 
       {/* Disclaimer */}
       <div className="mt-2 text-[10px] text-zinc-600 leading-relaxed">{data.disclaimer}</div>
-    </div>
+    </CardWrapper>
   );
 }

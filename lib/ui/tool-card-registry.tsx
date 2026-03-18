@@ -1,9 +1,6 @@
 import { SwapQuoteCard } from "@/components/chat/cards/SwapQuoteCard";
 import { SwapExecutionCard } from "@/components/chat/cards/SwapExecutionCard";
-import { PoolReservesCard } from "@/components/chat/cards/PoolReservesCard";
 import { AllPairsCard } from "@/components/chat/cards/AllPairsCard";
-import { FarmsTableCard } from "@/components/chat/cards/FarmsTableCard";
-import { InfinityPoolRatesCard } from "@/components/chat/cards/InfinityPoolRatesCard";
 import { YieldOpportunitiesCard } from "@/components/chat/cards/YieldOpportunitiesCard";
 import { AddLiquidityCard } from "@/components/chat/cards/AddLiquidityCard";
 import { RemoveLiquidityCard } from "@/components/chat/cards/RemoveLiquidityCard";
@@ -21,9 +18,6 @@ import { StrategyPlanCard } from "@/components/chat/cards/StrategyPlanCard";
 import type {
   SwapQuoteResult,
   PrepareSwapResult,
-  PoolReservesResult,
-  ActiveFarmsResult,
-  InfinityPoolRatesResult,
   YieldOpportunitiesResult,
   PrepareAddLiquidityResult,
   PrepareRemoveLiquidityResult,
@@ -52,10 +46,10 @@ export const TOOL_CARD_REGISTRY: Record<string, CardRenderer> = {
   // ZealousSwap tools
   zealous_getSwapQuote: (o) => <SwapQuoteCard data={o as unknown as SwapQuoteResult} />,
   zealous_prepareSwap: (o, id, ex) => <SwapExecutionCard data={o as unknown as PrepareSwapResult} toolCallId={id} executionState={ex} />,
-  zealous_getPoolReserves: (o) => <PoolReservesCard data={o as unknown as PoolReservesResult} />,
+  zealous_getPoolReserves: () => null, // AI uses data in text response
   zealous_listAllPairs: (o) => <AllPairsCard data={o as unknown as AllPairsResult} />,
-  zealous_getActiveFarms: (o) => <FarmsTableCard data={o as unknown as ActiveFarmsResult} />,
-  zealous_getInfinityPoolRates: (o) => <InfinityPoolRatesCard data={o as unknown as InfinityPoolRatesResult} />,
+  zealous_getActiveFarms: () => null, // yield tool aggregates this
+  zealous_getInfinityPoolRates: () => null, // yield tool aggregates this
   zealous_discoverYieldOpportunities: (o) => <YieldOpportunitiesCard data={o as unknown as YieldOpportunitiesResult} />,
   zealous_prepareAddLiquidity: (o, id, ex) => <AddLiquidityCard data={o as unknown as PrepareAddLiquidityResult} toolCallId={id} executionState={ex} />,
   zealous_prepareRemoveLiquidity: (o, id, ex) => <RemoveLiquidityCard data={o as unknown as PrepareRemoveLiquidityResult} toolCallId={id} executionState={ex} />,

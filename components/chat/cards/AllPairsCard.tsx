@@ -2,14 +2,10 @@
 
 import { useState } from "react";
 import type { AllPairsResult, PairListItem } from "@/lib/ai/tool-types";
+import { getProtocolBadge } from "./shared/card-colors";
+import { CardWrapper } from "./shared/CardWrapper";
 
 const PAGE_SIZE = 10;
-
-const PROTOCOL_BADGES: Record<string, { label: string; className: string }> = {
-  zealous: { label: "Zealous", className: "bg-blue-900/50 text-blue-400" },
-  kroko: { label: "Kroko", className: "bg-indigo-900/50 text-indigo-400" },
-  kaspacom: { label: "KaspaCom", className: "bg-orange-900/50 text-orange-400" },
-};
 
 function formatLiquidity(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -20,16 +16,16 @@ function formatLiquidity(n: number): string {
 
 function PairRow({ pair, maxLiquidity, showProtocol }: { pair: PairListItem; maxLiquidity: number; showProtocol: boolean }) {
   const barWidth = maxLiquidity > 0 ? (pair.totalLiquidityKas / maxLiquidity) * 100 : 0;
-  const badge = pair.protocolId ? PROTOCOL_BADGES[pair.protocolId] : undefined;
+  const badge = showProtocol && pair.protocolId ? getProtocolBadge(pair.protocolId) : undefined;
 
   return (
     <tr className="border-b border-zinc-700/30 last:border-0">
       <td className="py-2 pr-4">
         <div className="flex items-center gap-1.5">
           <span className="text-sm text-zinc-200 font-medium">{pair.pair}</span>
-          {showProtocol && badge && (
+          {badge && (
             <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${badge.className}`}>
-              {badge.label}
+              {badge.shortLabel}
             </span>
           )}
         </div>
@@ -64,18 +60,18 @@ export function AllPairsCard({ data }: { data: AllPairsResult }) {
   // Detect if showing multiple protocols (show badges when mixed)
   const protocols = new Set(data.pairs.map((p) => p.protocolId).filter(Boolean));
   const showProtocol = protocols.size > 1;
-  const singleProtocol = protocols.size === 1 ? PROTOCOL_BADGES[Array.from(protocols)[0]] : undefined;
+  const singleBadge = protocols.size === 1 ? getProtocolBadge(Array.from(protocols)[0]) : undefined;
 
   return (
-    <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
+    <CardWrapper>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className="text-xs text-zinc-500 uppercase tracking-wide">
             Trading Pairs
           </div>
-          {singleProtocol && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${singleProtocol.className}`}>
-              {singleProtocol.label}
+          {singleBadge && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${singleBadge.className}`}>
+              {singleBadge.shortLabel}
             </span>
           )}
         </div>
@@ -134,6 +130,6 @@ export function AllPairsCard({ data }: { data: AllPairsResult }) {
           </button>
         </div>
       )}
-    </div>
+    </CardWrapper>
   );
 }

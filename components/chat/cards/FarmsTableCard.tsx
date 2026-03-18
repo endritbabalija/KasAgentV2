@@ -1,11 +1,12 @@
 import type { ActiveFarmsResult } from "@/lib/ai/tool-types";
 import { formatAmount } from "./shared/ExecutionCardParts";
+import { CardWrapper } from "./shared/CardWrapper";
 
 export function FarmsTableCard({ data }: { data: ActiveFarmsResult }) {
   const totalAlloc = Math.max(1, parseInt(data.totalAllocPoint, 10) || 0);
 
   return (
-    <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
+    <CardWrapper>
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs text-zinc-500 uppercase tracking-wide">Active Farms</div>
         <div className="text-xs text-zinc-500">
@@ -48,6 +49,6 @@ export function FarmsTableCard({ data }: { data: ActiveFarmsResult }) {
           </tbody>
         </table>
       </div>
-    </div>
+    </CardWrapper>
   );
 }

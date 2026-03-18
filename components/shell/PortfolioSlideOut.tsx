@@ -1,15 +1,14 @@
 "use client";
 
-import { X } from "lucide-react";
-import { usePortfolio } from "@/hooks/usePortfolio";
-import { useInfinityPoolData } from "@/hooks/useInfinityPoolData";
+import { X, LogOut } from "lucide-react";
+import { useAccount, useDisconnect } from "wagmi";
 import { usePortfolioPanel } from "@/stores/ui";
 import { PortfolioPanel } from "@/components/sidebar/PortfolioPanel";
 
 export function PortfolioSlideOut() {
-  const portfolio = usePortfolio();
-  const { pools } = useInfinityPoolData();
   const portfolioPanel = usePortfolioPanel();
+  const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
 
   return (
     <>
@@ -26,7 +25,7 @@ export function PortfolioSlideOut() {
 
       {/* Slide-out panel */}
       <aside
-        className={`fixed top-0 right-0 h-full w-80 z-50 bg-zinc-950 border-l border-zinc-800 transition-transform duration-300 ${
+        className={`fixed top-0 right-0 h-full w-80 z-50 bg-zinc-950 border-l border-zinc-800 transition-transform duration-300 flex flex-col ${
           portfolioPanel.isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -40,9 +39,27 @@ export function PortfolioSlideOut() {
             <X className="w-4 h-4 text-zinc-400" />
           </button>
         </div>
-        <div className="overflow-y-auto h-[calc(100%-49px)] px-4 py-3">
-          <PortfolioPanel portfolio={portfolio} pools={pools} />
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          <PortfolioPanel />
         </div>
+        {isConnected && (
+          <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between">
+            <span className="text-xs text-zinc-500 font-mono">
+              {address?.slice(0, 6)}...{address?.slice(-4)}
+            </span>
+            <button
+              onClick={() => {
+                fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
+                disconnect();
+                portfolioPanel.close();
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-red-400 hover:bg-red-400/10 transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Disconnect
+            </button>
+          </div>
+        )}
       </aside>
     </>
   );

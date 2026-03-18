@@ -1,5 +1,6 @@
 import type { MembershipStatusResult } from "@/lib/ai/tool-types";
 import { shortenAddress } from "./shared/ExecutionCardParts";
+import { CardWrapper } from "./shared/CardWrapper";
 
 function formatDate(iso: string): string {
   if (iso === "N/A") return "N/A";
@@ -14,7 +15,7 @@ export function MembershipStatusCard({ data }: { data: MembershipStatusResult })
   const { membership, nftStaking, nftStakingGlobals } = data;
 
   return (
-    <div className="bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-4">
+    <CardWrapper>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs text-zinc-500 uppercase tracking-wide">
@@ -156,6 +157,6 @@ export function MembershipStatusCard({ data }: { data: MembershipStatusResult })
           </ul>
         </div>
       )}
-    </div>
+    </CardWrapper>
   );
 }

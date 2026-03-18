@@ -19,7 +19,7 @@ export interface InfinityPoolInfo {
   emissionsPaused?: boolean;
 }
 
-export function useInfinityPoolData() {
+export function useInfinityPoolData(enabled: boolean = true) {
   const { data, isLoading, isError, refetch } = useReadContracts({
     contracts: [
       // ZEAL pool (indices 0-4)
@@ -81,6 +81,7 @@ export function useInfinityPoolData() {
         functionName: "xKasperToken" as const,
       },
     ],
+    query: { enabled },
   });
 
   const pools = useMemo<InfinityPoolInfo[]>(() => {
