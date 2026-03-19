@@ -1,18 +1,20 @@
 import { z } from "zod";
 import { tool } from "ai";
 import { formatEther, formatUnits } from "viem";
-import { getAllV2Factories } from "@/config/protocols";
 import { CONTRACTS } from "@/config/contracts";
 import { factoryAbi, pairAbi } from "@/config/abis";
+import { getAllV2Factories, getProtocol } from "@/config/protocols";
 import { client, resolveTokenAddress, getTokenDecimals, addressToSymbol } from "./helpers";
 import { mcResult } from "@/lib/multicall";
+import { getDiscoveryData } from "@/lib/token-registry";
+import { derivePrices, type TokenMap } from "@/lib/portfolio-math";
 
 const ZERO_PAIR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
 
 export const oracleTools = {
   getTokenPrice: tool({
     description:
-      "Get the current price of a token in KAS, derived from on-chain pair reserves. Use this when users ask about token prices, e.g. 'what's the ZEAL price?' or 'how much is NACHO worth?'.",
+      "Get the current price of a token in KAS across all DEXes. Shows price, per-DEX liquidity depth, and flags where liquidity is thin or absent. Use when users ask about token prices.",
     inputSchema: z.object({
       token: z
         .string()
@@ -26,9 +28,7 @@ export const oracleTools = {
           return {
             token: "KAS",
             priceInKAS: "1",
-            pairAddress: "N/A",
-            liquidityKAS: "N/A",
-            liquidityToken: "N/A",
+            dexLiquidity: [],
             tokenDecimals: 18,
           };
         }
@@ -41,7 +41,22 @@ export const oracleTools = {
         const tokenDecimals = await getTokenDecimals(symbol);
         const wkas = CONTRACTS.WKAS;
 
-        // Check WKAS pairs across ALL V2 factories for best price coverage
+        // Use shared pricing algorithm (same as portfolio panel)
+        const { tokens, pairs } = await getDiscoveryData();
+        const tokenMap: TokenMap = new Map();
+        for (const t of tokens) {
+          if (t.address) {
+            tokenMap.set(t.address.toLowerCase(), { decimals: t.decimals, symbol: t.symbol });
+          }
+        }
+        const prices = derivePrices(pairs, tokenMap, wkas);
+        const priceInKAS = prices[tokenAddress.toLowerCase()];
+
+        if (priceInKAS === undefined || priceInKAS === 0) {
+          return { error: `No liquidity path found for ${symbol}. Cannot determine price.` };
+        }
+
+        // Check WKAS pairs on ALL DEXes for per-DEX liquidity breakdown
         const factories = getAllV2Factories();
         const getPairCalls = factories.map((f) => ({
           address: f.address,
@@ -55,67 +70,77 @@ export const oracleTools = {
           allowFailure: true,
         });
 
-        // Find valid pairs (non-zero addresses)
-        const validPairs: `0x${string}`[] = [];
-        for (const r of pairResults) {
-          const addr = mcResult<`0x${string}`>(r, ZERO_PAIR);
-          if (addr !== ZERO_PAIR) validPairs.push(addr);
-        }
-
-        if (validPairs.length === 0) {
-          return { error: `No WKAS pair found for ${symbol} on any DEX. Cannot determine price.` };
-        }
-
-        // Read reserves and token ordering for all valid pairs
-        const detailCalls = validPairs.flatMap((pairAddr) => [
-          { address: pairAddr, abi: pairAbi, functionName: "getReserves" as const },
-          { address: pairAddr, abi: pairAbi, functionName: "token0" as const },
-        ]);
-
-        const detailResults = await client.multicall({
-          contracts: detailCalls,
-          allowFailure: true,
-        });
-
-        // Pick the pair with the deepest WKAS liquidity
-        let bestPair = ZERO_PAIR;
-        let bestReserveKAS = 0n;
-        let bestReserveToken = 0n;
-
-        for (let i = 0; i < validPairs.length; i++) {
-          const base = i * 2;
-          const [r0, r1] = mcResult<[bigint, bigint, number]>(detailResults[base], [0n, 0n, 0]);
-          const isToken0WKAS = mcResult<string>(detailResults[base + 1], "").toLowerCase() === wkas.toLowerCase();
-
-          const reserveKAS = isToken0WKAS ? r0 : r1;
-          const reserveToken = isToken0WKAS ? r1 : r0;
-
-          if (reserveKAS > bestReserveKAS) {
-            bestPair = validPairs[i];
-            bestReserveKAS = reserveKAS;
-            bestReserveToken = reserveToken;
+        // Collect valid pairs with their protocol IDs
+        const validPairs: { address: `0x${string}`; protocolId: string }[] = [];
+        for (let i = 0; i < pairResults.length; i++) {
+          const addr = mcResult<`0x${string}`>(pairResults[i], ZERO_PAIR);
+          if (addr !== ZERO_PAIR) {
+            validPairs.push({ address: addr, protocolId: factories[i].protocolId });
           }
         }
 
-        if (bestReserveKAS === 0n || bestReserveToken === 0n) {
-          return { error: `Pair for ${symbol} exists but has no liquidity.` };
-        }
+        // Read reserves for all valid pairs in one multicall
+        const dexLiquidity: {
+          dex: string;
+          pairAddress: string;
+          liquidityKAS: string;
+          liquidityToken: string;
+          spotPrice: string;
+        }[] = [];
 
-        // Calculate spot price: how many KAS per 1 token
-        const kasDecimals = 18;
-        const priceInKAS =
-          Number((bestReserveKAS * BigInt(10 ** tokenDecimals)) / bestReserveToken) /
-          10 ** kasDecimals;
+        let pricingMethod: "direct" | "transitive" = validPairs.length > 0 ? "direct" : "transitive";
+
+        if (validPairs.length > 0) {
+          const detailCalls = validPairs.flatMap((p) => [
+            { address: p.address, abi: pairAbi, functionName: "getReserves" as const },
+            { address: p.address, abi: pairAbi, functionName: "token0" as const },
+          ]);
+
+          const detailResults = await client.multicall({
+            contracts: detailCalls,
+            allowFailure: true,
+          });
+
+          for (let i = 0; i < validPairs.length; i++) {
+            const base = i * 2;
+            const [r0, r1] = mcResult<[bigint, bigint, number]>(detailResults[base], [0n, 0n, 0]);
+            const isToken0WKAS = mcResult<string>(detailResults[base + 1], "").toLowerCase() === wkas.toLowerCase();
+
+            const reserveKAS = isToken0WKAS ? r0 : r1;
+            const reserveToken = isToken0WKAS ? r1 : r0;
+
+            if (reserveKAS === 0n && reserveToken === 0n) continue;
+
+            const protocol = getProtocol(validPairs[i].protocolId as "zealous" | "kroko" | "kaspacom");
+            const spotPrice = reserveToken > 0n
+              ? (Number(reserveKAS) / Number(reserveToken)).toString()
+              : "0";
+
+            dexLiquidity.push({
+              dex: protocol.name,
+              pairAddress: validPairs[i].address,
+              liquidityKAS: formatEther(reserveKAS),
+              liquidityToken: formatUnits(reserveToken, tokenDecimals),
+              spotPrice,
+            });
+          }
+
+          // Sort by liquidity depth (deepest first)
+          dexLiquidity.sort((a, b) => parseFloat(b.liquidityKAS) - parseFloat(a.liquidityKAS));
+
+          // If all pairs had zero reserves, it's transitive
+          if (dexLiquidity.length === 0) pricingMethod = "transitive";
+        }
 
         const resolvedSymbol = await addressToSymbol(tokenAddress);
 
         return {
           token: resolvedSymbol,
+          tokenAddress,
           priceInKAS: priceInKAS.toString(),
-          pairAddress: bestPair,
-          liquidityKAS: formatEther(bestReserveKAS),
-          liquidityToken: formatUnits(bestReserveToken, tokenDecimals),
+          dexLiquidity,
           tokenDecimals,
+          ...(pricingMethod === "transitive" ? { note: "Price derived transitively through intermediate pairs (no direct WKAS pair)." } : {}),
         };
       } catch (e) {
         return {

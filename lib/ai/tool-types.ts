@@ -397,13 +397,21 @@ export interface AllPairsResult {
 
 // --- Token Price types ---
 
-export interface TokenPriceResult {
-  token: string;
-  priceInKAS: string;
+export interface DexLiquidityInfo {
+  dex: string;
   pairAddress: string;
   liquidityKAS: string;
   liquidityToken: string;
+  spotPrice: string;
+}
+
+export interface TokenPriceResult {
+  token: string;
+  tokenAddress?: string;
+  priceInKAS: string;
+  dexLiquidity: DexLiquidityInfo[];
   tokenDecimals: number;
+  note?: string;
   error?: string;
 }
 

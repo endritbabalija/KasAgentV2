@@ -18,9 +18,12 @@ import type { Token } from "@/config/tokens";
 import { client } from "../shared/helpers";
 import { getDiscoveryData, type PairDiscoveryData } from "@/lib/token-registry";
 import { mcResult } from "@/lib/multicall";
-
-const BLOCK_TIME_SECONDS = 2;
-const BLOCKS_PER_YEAR = (365.25 * 24 * 3600) / BLOCK_TIME_SECONDS;
+import {
+  derivePrices as sharedDerivePrices,
+  BLOCKS_PER_YEAR,
+  BLOCK_TIME_SECONDS,
+  type TokenMap,
+} from "@/lib/portfolio-math";
 
 type PairData = PairDiscoveryData & { totalSupply: bigint };
 
@@ -144,49 +147,25 @@ async function fetchOnChainData(): Promise<[PairData[], FarmData, InfinityData, 
   return [pairData, farmData, infinityData, tokens];
 }
 
-// ===== Derive token prices from pair reserves =====
+// ===== Derive token prices from pair reserves (uses shared module) =====
 function derivePrices(pairs: PairData[], tokens: Token[]) {
-  const wkasAddr = CONTRACTS.WKAS.toLowerCase();
-  const tokenPrices: Record<string, number> = { [wkasAddr]: 1 };
-
-  // Build address-to-symbol and address-to-decimals maps from discovered tokens
+  // Build token map for the shared derivePrices
   const addrToSym: Record<string, string> = {};
   const addrToDecimals: Record<string, number> = {};
+  const tokenMap: TokenMap = new Map();
   for (const t of tokens) {
     if (t.address) {
-      addrToSym[t.address.toLowerCase()] = t.symbol;
-      addrToDecimals[t.address.toLowerCase()] = t.decimals;
+      const addr = t.address.toLowerCase();
+      addrToSym[addr] = t.symbol;
+      addrToDecimals[addr] = t.decimals;
+      tokenMap.set(addr, { decimals: t.decimals, symbol: t.symbol });
     }
   }
 
-  // First pass: pairs with WKAS on one side
-  for (const pair of pairs) {
-    if (pair.reserve0 === 0n || pair.reserve1 === 0n) continue;
-    const d0 = addrToDecimals[pair.token0] ?? 18;
-    const d1 = addrToDecimals[pair.token1] ?? 18;
-    const r0 = Number(formatUnits(pair.reserve0, d0));
-    const r1 = Number(formatUnits(pair.reserve1, d1));
-    if (pair.token0 === wkasAddr && !tokenPrices[pair.token1]) {
-      tokenPrices[pair.token1] = r0 / r1;
-    } else if (pair.token1 === wkasAddr && !tokenPrices[pair.token0]) {
-      tokenPrices[pair.token0] = r1 / r0;
-    }
-  }
+  // Use shared pricing algorithm
+  const tokenPrices = sharedDerivePrices(pairs, tokenMap, CONTRACTS.WKAS);
 
-  // Second pass: pairs where one side has a known price
-  for (const pair of pairs) {
-    if (pair.reserve0 === 0n || pair.reserve1 === 0n) continue;
-    const d0 = addrToDecimals[pair.token0] ?? 18;
-    const d1 = addrToDecimals[pair.token1] ?? 18;
-    const r0 = Number(formatUnits(pair.reserve0, d0));
-    const r1 = Number(formatUnits(pair.reserve1, d1));
-    if (tokenPrices[pair.token0] && !tokenPrices[pair.token1]) {
-      tokenPrices[pair.token1] = (tokenPrices[pair.token0] * r0) / r1;
-    } else if (tokenPrices[pair.token1] && !tokenPrices[pair.token0]) {
-      tokenPrices[pair.token0] = (tokenPrices[pair.token1] * r1) / r0;
-    }
-  }
-
+  // Build symbol-keyed prices for the tool response
   const tokenPricesInKas: Record<string, number> = { KAS: 1 };
   for (const [addr, price] of Object.entries(tokenPrices)) {
     const sym = addrToSym[addr];

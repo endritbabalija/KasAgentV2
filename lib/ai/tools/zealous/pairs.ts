@@ -3,6 +3,7 @@ import { z } from "zod";
 import { tool } from "ai";
 import { CONTRACTS } from "@/config/contracts";
 import { getDiscoveryData } from "@/lib/token-registry";
+import { derivePrices, type TokenMap } from "@/lib/portfolio-math";
 
 const DEFAULT_MIN_LIQUIDITY_KAS = 100;
 
@@ -27,43 +28,18 @@ export const zealousPairTools = {
 
         const addrToSymbol: Record<string, string> = {};
         const addrToDecimals: Record<string, number> = {};
+        const tokenMap: TokenMap = new Map();
         for (const t of tokens) {
           if (t.address) {
-            addrToSymbol[t.address.toLowerCase()] = t.symbol;
-            addrToDecimals[t.address.toLowerCase()] = t.decimals;
+            const addr = t.address.toLowerCase();
+            addrToSymbol[addr] = t.symbol;
+            addrToDecimals[addr] = t.decimals;
+            tokenMap.set(addr, { decimals: t.decimals, symbol: t.symbol });
           }
         }
 
-        const wkasAddr = CONTRACTS.WKAS.toLowerCase();
-
-        // Two-pass price derivation (same approach as yield.ts)
-        const tokenPrices: Record<string, number> = { [wkasAddr]: 1 };
-
-        for (const p of pairs) {
-          if (p.reserve0 === 0n || p.reserve1 === 0n) continue;
-          const d0 = addrToDecimals[p.token0] ?? 18;
-          const d1 = addrToDecimals[p.token1] ?? 18;
-          const r0 = Number(formatUnits(p.reserve0, d0));
-          const r1 = Number(formatUnits(p.reserve1, d1));
-          if (p.token0 === wkasAddr && !tokenPrices[p.token1]) {
-            tokenPrices[p.token1] = r0 / r1;
-          } else if (p.token1 === wkasAddr && !tokenPrices[p.token0]) {
-            tokenPrices[p.token0] = r1 / r0;
-          }
-        }
-
-        for (const p of pairs) {
-          if (p.reserve0 === 0n || p.reserve1 === 0n) continue;
-          const d0 = addrToDecimals[p.token0] ?? 18;
-          const d1 = addrToDecimals[p.token1] ?? 18;
-          const r0 = Number(formatUnits(p.reserve0, d0));
-          const r1 = Number(formatUnits(p.reserve1, d1));
-          if (tokenPrices[p.token0] && !tokenPrices[p.token1]) {
-            tokenPrices[p.token1] = (tokenPrices[p.token0] * r0) / r1;
-          } else if (tokenPrices[p.token1] && !tokenPrices[p.token0]) {
-            tokenPrices[p.token0] = (tokenPrices[p.token1] * r1) / r0;
-          }
-        }
+        // Shared pricing algorithm
+        const tokenPrices = derivePrices(pairs, tokenMap, CONTRACTS.WKAS);
 
         const filteredPairs = protocolId
           ? pairs.filter((p) => p.protocolId === protocolId)
