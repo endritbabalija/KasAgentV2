@@ -18,11 +18,16 @@ import {
   createConversation,
   deleteLastAssistantMessages,
   generateTitle,
+  getConversationCount,
   getConversationOwner,
+  getExecutionStatesForConversation,
   getMessages,
+  getPortfolioSnapshot,
   saveMessage,
   updateConversationTimestamp,
+  upsertPortfolioSnapshot,
 } from "@/lib/db/queries";
+import { computePortfolioDiff } from "@/lib/ai/portfolio-diff";
 
 export const POST = withAuth(async (req, { wallet }) => {
   // Rate limiting (Supabase-backed, persists across deploys)
@@ -76,10 +81,29 @@ export const POST = withAuth(async (req, { wallet }) => {
     await saveMessage(conversationId, message);
   }
 
-  // Load full history from DB
-  const previousMessages = await getMessages(conversationId);
+  // Load full history + user metadata in parallel
+  const [previousMessages, conversationCount, executionStates, previousSnapshot] =
+    await Promise.all([
+      getMessages(conversationId),
+      getConversationCount(wallet),
+      getExecutionStatesForConversation(conversationId),
+      getPortfolioSnapshot(wallet).catch(() => null),
+    ]);
 
-  const systemPrompt = await buildSystemPrompt(portfolio, infinityPools);
+  const portfolioDiff =
+    portfolio && previousSnapshot
+      ? computePortfolioDiff(
+          portfolio,
+          previousSnapshot,
+          previousSnapshot.snapshotAt
+        )
+      : "";
+
+  const systemPrompt = await buildSystemPrompt(portfolio, infinityPools, {
+    conversationCount,
+    executionStates,
+    portfolioDiff,
+  });
   const modelMessages = await convertToModelMessages(previousMessages);
 
   try {
@@ -88,7 +112,7 @@ export const POST = withAuth(async (req, { wallet }) => {
       system: systemPrompt,
       messages: modelMessages,
       tools: aiTools,
-      stopWhen: stepCountIs(5),
+      stopWhen: stepCountIs(8),
       onError({ error }) {
         console.error("[streamText error]", error);
       },
@@ -105,6 +129,11 @@ export const POST = withAuth(async (req, { wallet }) => {
           await updateConversationTimestamp(conversationId);
         } catch (err) {
           console.error("[chat onFinish] Failed to save response:", err);
+        }
+        if (portfolio) {
+          upsertPortfolioSnapshot(wallet, portfolio).catch((err) =>
+            console.error("[chat onFinish] Failed to save snapshot:", err)
+          );
         }
       },
       onError(error) {

@@ -1,5 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import type { ChatMessage } from "@/lib/types";
+import type { SerializedPortfolio } from "@/lib/ai/serializers";
+import type { SnapshotData } from "@/lib/ai/portfolio-diff";
 
 export function generateTitle(messages: ChatMessage[]): string {
   const firstUserMsg = messages.find((m) => m.role === "user");
@@ -102,6 +104,31 @@ export async function getConversationWithMessages(
   return { messages, executionStates };
 }
 
+export async function getConversationCount(
+  wallet: string
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("conversations")
+    .select("id", { count: "exact", head: true })
+    .eq("wallet_address", wallet);
+  if (error) return 0; // fail open — don't block chat if count fails
+  return count ?? 0;
+}
+
+export async function getExecutionStatesForConversation(
+  conversationId: string
+): Promise<Array<{ toolCallId: string; state: string; txHash?: string }>> {
+  const { data } = await supabase
+    .from("execution_states")
+    .select("tool_call_id, state, tx_hash")
+    .eq("conversation_id", conversationId);
+  return (data ?? []).map((row) => ({
+    toolCallId: row.tool_call_id,
+    state: row.state,
+    txHash: row.tx_hash ?? undefined,
+  }));
+}
+
 export async function updateConversationTimestamp(
   conversationId: string
 ): Promise<void> {
@@ -142,4 +169,46 @@ export async function deleteLastAssistantMessages(
     .delete()
     .eq("conversation_id", conversationId)
     .gt("created_at", lastUserMsg.created_at);
+}
+
+export async function upsertPortfolioSnapshot(
+  wallet: string,
+  portfolio: SerializedPortfolio
+): Promise<void> {
+  const { error } = await supabase.from("portfolio_snapshots").upsert(
+    {
+      wallet_address: wallet.toLowerCase(),
+      balances: portfolio.balances,
+      lp_positions: portfolio.lpPositions,
+      farm_positions: portfolio.farmPositions,
+      staking_positions: portfolio.stakingPositions,
+      snapshot_at: new Date().toISOString(),
+    },
+    { onConflict: "wallet_address" }
+  );
+  if (error)
+    throw new Error(`Failed to upsert portfolio snapshot: ${error.message}`);
+}
+
+export async function getPortfolioSnapshot(
+  wallet: string
+): Promise<SnapshotData | null> {
+  const { data, error } = await supabase
+    .from("portfolio_snapshots")
+    .select(
+      "balances, lp_positions, farm_positions, staking_positions, snapshot_at"
+    )
+    .eq("wallet_address", wallet.toLowerCase())
+    .maybeSingle();
+  if (error)
+    throw new Error(`Failed to get portfolio snapshot: ${error.message}`);
+  if (!data) return null;
+  return {
+    balances: (data.balances ?? []) as SnapshotData["balances"],
+    lpPositions: (data.lp_positions ?? []) as SnapshotData["lpPositions"],
+    farmPositions: (data.farm_positions ?? []) as SnapshotData["farmPositions"],
+    stakingPositions:
+      (data.staking_positions ?? []) as SnapshotData["stakingPositions"],
+    snapshotAt: new Date(data.snapshot_at),
+  };
 }
