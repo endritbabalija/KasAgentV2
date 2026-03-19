@@ -110,7 +110,6 @@ export function ChatContainer({
     statusRef,
     executionStatesRef,
     portfolioRefetch: portfolio.refetch,
-    portfolioIsFetching: portfolio.isFetching,
   });
 
   // Execution state persistence — conversationId is always known
@@ -127,31 +126,24 @@ export function ChatContainer({
     onFinish: () => {
       onFinish?.();
     },
-    onError: () => {
-      // No-op — persistence is handled server-side
+    onError: (err) => {
+      const msg = err.message || String(err);
+      if (msg.includes("401") || msg.includes("Authentication required")) {
+        handleSessionExpired();
+      }
     },
   });
 
-  // Detect auth expiry from chat API 401 errors
-  useEffect(() => {
-    if (!error) return;
-    const msg = error.message || String(error);
-    if (msg.includes("401") || msg.includes("Authentication required")) {
-      handleSessionExpired();
-    }
-  }, [error, handleSessionExpired]);
+  // Keep refs current (render-time assignment — no effect needed for pure refs)
+  sendMessageRef.current = sendMessage;
+  statusRef.current = status;
+  executionStatesRef.current = executionStates;
 
-  // Keep refs and parent in sync
+  // Notify parent on message changes
   useEffect(() => {
     messagesRef.current = messages;
     onMessagesChange?.(messages);
   }, [messages, onMessagesChange]);
-
-  useEffect(() => {
-    sendMessageRef.current = sendMessage;
-    statusRef.current = status;
-    executionStatesRef.current = executionStates;
-  }, [sendMessage, status, executionStates]);
 
   // Auto-send initialInput on mount (used by feed card actions)
   const initialInputSentRef = useRef(false);

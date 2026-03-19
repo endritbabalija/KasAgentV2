@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useConfig, useWriteContract, useSendTransaction } from "wagmi";
+import { useMountEffect } from "@/hooks/useMountEffect";
 import { waitForTransactionReceipt } from "@wagmi/core";
 import { useExecutionState, type ExecutionRecord } from "@/components/chat/ExecutionStateContext";
 
@@ -67,9 +68,9 @@ export function useCardExecution({
   const executingRef = useRef(false);
 
   // Clean up on unmount to prevent stale state updates
-  useEffect(() => {
+  useMountEffect(() => {
     return () => { abortedRef.current = true; };
-  }, []);
+  });
 
   // Pre-allocate wagmi hooks — always called unconditionally (Rules of Hooks)
   const wc0 = useWriteContract();

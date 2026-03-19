@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useRef, useCallback } from "react";
+import { useMountEffect } from "@/hooks/useMountEffect";
 import type { ChatMessage } from "@/lib/types";
 import type { ExecutionRecord } from "@/components/chat/ExecutionStateContext";
 import { findActiveStrategy, countCompletedStrategySteps } from "@/lib/ui/strategy-helpers";
@@ -10,8 +11,7 @@ interface UseStrategyAutoContinueOptions {
   sendMessageRef: React.RefObject<(opts: { text: string }) => void>;
   statusRef: React.RefObject<string>;
   executionStatesRef: React.RefObject<Record<string, ExecutionRecord>>;
-  portfolioRefetch: () => void;
-  portfolioIsFetching: boolean;
+  portfolioRefetch: () => Promise<void>;
 }
 
 /**
@@ -24,82 +24,59 @@ export function useStrategyAutoContinue({
   statusRef,
   executionStatesRef,
   portfolioRefetch,
-  portfolioIsFetching,
 }: UseStrategyAutoContinueOptions) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingContinueRef = useRef<{ toolCallId: string; txHash?: string } | null>(null);
-  // Track whether we've seen isFetching go true since onExecutionSuccess was called.
-  // This prevents premature firing if the effect runs before refetch starts.
-  const sawFetchingRef = useRef(false);
 
-  // When portfolio finishes refetching after a successful step, send continuation
-  useEffect(() => {
-    // Clear any existing timer from a previous run of this effect
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
+  // Clear pending timer on unmount to prevent firing on stale refs
+  useMountEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  });
 
-    if (!pendingContinueRef.current) return;
-
-    if (portfolioIsFetching) {
-      // Refetch started — mark that we've seen it
-      sawFetchingRef.current = true;
-      return;
-    }
-
-    // Portfolio is not fetching. Only proceed if we saw it fetching first
-    // (prevents premature fire before React state transitions to isFetching=true)
-    if (!sawFetchingRef.current) return;
-
-    // Portfolio finished refetching — fire continuation
-    const { toolCallId, txHash } = pendingContinueRef.current;
-    pendingContinueRef.current = null;
-    sawFetchingRef.current = false;
-
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-
-      if (statusRef.current !== "ready") return;
-
-      const strategy = findActiveStrategy(messagesRef.current);
-      if (!strategy) return;
-
-      const record: ExecutionRecord = { state: "success", ...(txHash ? { txHash } : {}) };
-      const completed = countCompletedStrategySteps(
-        messagesRef.current,
-        { ...executionStatesRef.current, [toolCallId]: record },
-        strategy
-      );
-
-      if (completed >= strategy.steps.length) {
-        sendMessageRef.current({
-          text: `All ${strategy.steps.length} strategy steps completed successfully! Last tx: ${txHash ?? "confirmed"}. Summarize what was accomplished.`,
-        });
+  const onExecutionSuccess = useCallback(
+    async (toolCallId: string, txHash?: string) => {
+      try {
+        await portfolioRefetch();
+      } catch {
         return;
       }
 
-      const nextStep = strategy.steps[completed];
-      sendMessageRef.current({
-        text: `Step ${completed} completed${txHash ? ` (tx: ${txHash})` : ""}. Continue with step ${completed + 1}: ${nextStep.action}. Use my updated wallet balances.`,
-      });
-    }, 1500);
-
-    return () => {
+      // Clear any previous pending timer
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
-    };
-  }, [portfolioIsFetching, messagesRef, sendMessageRef, statusRef, executionStatesRef]);
 
-  const onExecutionSuccess = useCallback(
-    (toolCallId: string, txHash?: string) => {
-      portfolioRefetch();
-      pendingContinueRef.current = { toolCallId, txHash };
-      sawFetchingRef.current = false;
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+
+        if (statusRef.current !== "ready") return;
+
+        const strategy = findActiveStrategy(messagesRef.current);
+        if (!strategy) return;
+
+        const record: ExecutionRecord = { state: "success", ...(txHash ? { txHash } : {}) };
+        const completed = countCompletedStrategySteps(
+          messagesRef.current,
+          { ...executionStatesRef.current, [toolCallId]: record },
+          strategy
+        );
+
+        if (completed >= strategy.steps.length) {
+          sendMessageRef.current({
+            text: `All ${strategy.steps.length} strategy steps completed successfully! Last tx: ${txHash ?? "confirmed"}. Summarize what was accomplished.`,
+          });
+          return;
+        }
+
+        const nextStep = strategy.steps[completed];
+        sendMessageRef.current({
+          text: `Step ${completed} completed${txHash ? ` (tx: ${txHash})` : ""}. Continue with step ${completed + 1}: ${nextStep.action}. Use my updated wallet balances.`,
+        });
+      }, 1500);
     },
-    [portfolioRefetch]
+    [portfolioRefetch, messagesRef, sendMessageRef, statusRef, executionStatesRef]
   );
 
   return { onExecutionSuccess };

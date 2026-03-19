@@ -6,10 +6,25 @@
       "sourceType": "github",
       "computedHash": "3a0481591523c55ecfe2569b6b28b2dcbfa3742367667697219d29170981ad53"
     },
+    "grill-me": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "computedHash": "796a0735b3c6d279a1b797817d1a5b4d0dcf3a19ee5124011d8b7bcc1bcf22ee"
+    },
+    "improve-codebase-architecture": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "computedHash": "92ffd85a803661d754221f7aba260ee2065d3402eadf78872e227146fe1d6fbf"
+    },
     "oiloil-ui-ux-guide": {
       "source": "oil-oil/oiloil-ui-ux-guide",
       "sourceType": "github",
       "computedHash": "f7699e365a2f5a185d2562cd2a85bc6d4a9fdc8d1722bcc848321ab9e61d3b4d"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "computedHash": "e4453d2f51a009f6b49876cc4d46ce452194c54ea931d4a552a0eb0e9dd24c27"
     },
     "vercel-composition-patterns": {
       "source": "vercel-labs/agent-skills",

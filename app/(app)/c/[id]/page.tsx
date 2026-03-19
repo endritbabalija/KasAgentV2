@@ -1,4 +1,4 @@
-import { redirect, notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Chat } from "@/components/chat/Chat";
 import { getServerWallet } from "@/lib/auth-server";
 import { getConversationWithMessages } from "@/lib/db/queries";
@@ -14,7 +14,7 @@ export default async function ConversationPage({
   if (!wallet) redirect("/");
 
   const data = await getConversationWithMessages(id, wallet);
-  if (!data) notFound();
+  if (!data) redirect("/");
 
   return (
     <Chat

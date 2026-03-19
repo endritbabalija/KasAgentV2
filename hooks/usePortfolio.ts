@@ -25,7 +25,7 @@ export interface Portfolio {
   farmPositions: FarmPosition[];
   farmGlobals: FarmGlobals;
   stakingPositions: StakingPosition[];
-  refetch: () => void;
+  refetch: () => Promise<void>;
 }
 
 export function usePortfolio(): Portfolio {
@@ -41,11 +41,13 @@ export function usePortfolio(): Portfolio {
   const refetchFarmPos = farmPos.refetch;
   const refetchStakingPos = stakingPos.refetch;
 
-  const refetch = useCallback(() => {
-    refetchTokenBalances();
-    refetchLpPos();
-    refetchFarmPos();
-    refetchStakingPos();
+  const refetch = useCallback(async () => {
+    await Promise.all([
+      refetchTokenBalances(),
+      refetchLpPos(),
+      refetchFarmPos(),
+      refetchStakingPos(),
+    ]);
   }, [refetchTokenBalances, refetchLpPos, refetchFarmPos, refetchStakingPos]);
 
   return useMemo<Portfolio>(() => ({

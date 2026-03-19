@@ -1,32 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Plus, X } from "lucide-react";
 import { useConversations } from "@/hooks/useConversations";
 import { useLeftRail } from "@/stores/ui";
 import { ConversationList } from "@/components/sidebar/ConversationList";
 
+// Stable subscribe function for useSyncExternalStore (module-scope = same reference every render)
+function subscribeToPushState(callback: () => void) {
+  window.addEventListener("pushstate", callback);
+  return () => window.removeEventListener("pushstate", callback);
+}
+
 export function LeftRail() {
   const router = useRouter();
-  const routerPathname = usePathname();
+  usePathname(); // subscribe to Next.js router changes (triggers re-render on real navigations)
   const { conversations, isConversationsLoading, deleteConversation } = useConversations();
   const leftRail = useLeftRail();
 
-  // Track pathname from both Next.js router and pushState events.
-  // pushState (used by Chat.tsx for new conversations) doesn't update usePathname(),
-  // so we listen for the custom 'pushstate' event to stay in sync.
-  const [pathname, setPathname] = useState(routerPathname);
-
-  useEffect(() => {
-    setPathname(routerPathname);
-  }, [routerPathname]);
-
-  useEffect(() => {
-    const onPushState = () => setPathname(window.location.pathname);
-    window.addEventListener("pushstate", onPushState);
-    return () => window.removeEventListener("pushstate", onPushState);
-  }, []);
+  // Reads browser URL directly. Re-renders on:
+  // 1. Next.js navigations (usePathname above triggers re-render)
+  // 2. pushState events from Chat.tsx (subscribe callback triggers re-render)
+  const pathname = useSyncExternalStore(
+    subscribeToPushState,
+    () => window.location.pathname,
+    () => "/"
+  );
 
   // Extract active conversation ID from URL
   const activeConversationId = pathname.match(/^\/c\/([^/]+)/)?.[1] ?? null;

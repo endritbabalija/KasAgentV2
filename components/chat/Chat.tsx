@@ -8,6 +8,7 @@ import { usePortfolio } from "@/hooks/usePortfolio";
 import { useInfinityPoolData } from "@/hooks/useInfinityPoolData";
 import { useAuth } from "@/lib/auth-provider";
 import { useFeedInsights } from "@/hooks/useFeedInsights";
+import { useMountEffect } from "@/hooks/useMountEffect";
 import { ChatContainer } from "@/components/chat/ChatContainer";
 import { FeedContainer } from "@/components/feed/FeedContainer";
 import type { ExecutionRecord } from "@/components/chat/ExecutionStateContext";
@@ -44,12 +45,12 @@ export function Chat({
   const urlUpdatedRef = useRef(initialMessages.length > 0); // already on /c/[id] if has messages
 
   // Ensure browser URL matches route on mount (undo leftover pushState from previous chat)
-  useEffect(() => {
+  useMountEffect(() => {
     if (initialMessages.length === 0 && window.location.pathname !== "/") {
       window.history.replaceState(null, "", "/");
       window.dispatchEvent(new Event("pushstate"));
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount only
+  });
 
   const handleFirstSubmit = useCallback(() => {
     if (!urlUpdatedRef.current) {
